@@ -4,6 +4,7 @@ import {
   IsOptional,
   IsArray,
   ValidateNested,
+  IsNotEmpty,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
@@ -44,14 +45,25 @@ export class CreateAccountDto {
   @IsOptional()
   refreshTokenExpireIn?: number;
 
+  @IsNotEmpty()
   @IsString()
   authCode: string;
 
+  @IsNotEmpty()
   @IsString()
   appSecret: string;
 
+  @IsNotEmpty()
   @IsString()
   appKey: string;
+
+  @IsNotEmpty()
+  @IsString()
+  serviceId: string;
+
+  @IsOptional()
+  @IsString()
+  sheets?: string;
 
   @IsArray()
   @IsOptional()

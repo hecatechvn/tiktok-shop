@@ -23,6 +23,7 @@ export interface TikTokAccount {
   authCode: string;
   appSecret: string;
   appKey: string;
+  serviceId?: string;
   shopCipher?: ShopCipher[];
   status: boolean;
   task?: Task;
@@ -41,12 +42,15 @@ export interface CreateAccountDto {
   authCode: string;
   appSecret: string;
   appKey: string;
+  serviceId: string;
+  sheets?: string;
 }
 
 export interface UpdateAccountDto {
   authCode?: string;
   appSecret?: string;
   appKey?: string;
+  serviceId?: string;
   sheets?: string;
   status?: boolean;
 }

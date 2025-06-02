@@ -35,6 +35,9 @@ export class Task {
 
   @Prop({ default: true })
   isActive: boolean;
+
+  @Prop({ default: '' })
+  description?: string;
 }
 
 export type TaskDocument = Task & Document;
@@ -46,6 +49,18 @@ export const TaskSchema = SchemaFactory.createForClass(Task);
   timestamps: true,
 })
 export class Account {
+  @Prop({ required: true })
+  authCode: string;
+
+  @Prop({ required: true })
+  appKey: string;
+
+  @Prop({ required: true })
+  appSecret: string;
+
+  @Prop()
+  serviceId: string;
+
   @Prop()
   accessToken: string;
 
@@ -57,15 +72,6 @@ export class Account {
 
   @Prop()
   refreshTokenExpireIn: number;
-
-  @Prop({ required: true })
-  authCode: string;
-
-  @Prop({ required: true })
-  appSecret: string;
-
-  @Prop({ required: true })
-  appKey: string;
 
   @Prop({ type: [ShopCipher] })
   shopCipher: ShopCipher[];

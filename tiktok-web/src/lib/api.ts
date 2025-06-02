@@ -67,7 +67,6 @@ export async function fetchWithAuth(endpoint: string, options: RequestInit = {})
 
   // Kiểm tra xem token có tồn tại và đã hết hạn chưa
   if (accessToken && isTokenExpired(accessToken) && refreshTokenValue) {
-    console.log("Token đã hết hạn, đang cố gắng làm mới");
     
     // Sử dụng promise refresh hiện có hoặc tạo mới
     if (!refreshingPromise) {
@@ -82,7 +81,6 @@ export async function fetchWithAuth(endpoint: string, options: RequestInit = {})
       accessToken = newToken;
     } else {
       // Nếu làm mới thất bại, đăng xuất
-      console.log("Làm mới token thất bại, đang đăng xuất");
       signOut({ callbackUrl: "/login" });
       throw new Error("Phiên đã hết hạn. Vui lòng đăng nhập lại.");
     }
@@ -101,7 +99,6 @@ export async function fetchWithAuth(endpoint: string, options: RequestInit = {})
 
   // Xử lý lỗi 401 Unauthorized
   if (response.status === 401) {
-    console.log("Nhận được lỗi 401 unauthorized, đang đăng xuất người dùng");
     signOut({ callbackUrl: "/login" });
     throw new Error("Phiên đã hết hạn. Vui lòng đăng nhập lại.");
   }

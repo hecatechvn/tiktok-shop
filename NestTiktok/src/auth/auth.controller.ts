@@ -28,7 +28,6 @@ export class AuthController {
   @ApiResponse({ status: 200, description: 'Đăng nhập thành công' })
   @ApiResponse({ status: 401, description: 'Thông tin đăng nhập không hợp lệ' })
   async login(@Body() loginDto: LoginDto) {
-    console.log(loginDto);
     return this.authService.login(loginDto);
   }
 

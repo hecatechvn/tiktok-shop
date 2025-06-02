@@ -28,7 +28,6 @@ export default function TikTokAccountsPage() {
   const [selectedAccountIds, setSelectedAccountIds] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingAll, setIsLoadingAll] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const [currentAccount, setCurrentAccount] = useState<TikTokAccount | undefined>(undefined);
   const [pagination, setPagination] = useState<PaginationType>({
@@ -37,7 +36,7 @@ export default function TikTokAccountsPage() {
     total: 0,
   });
 
-  // Check screen size for responsive design
+  // Kiểm tra kích thước màn hình cho thiết kế responsive
   useEffect(() => {
     const checkScreenSize = () => {
       setIsMobile(window.innerWidth < 768);
@@ -51,12 +50,25 @@ export default function TikTokAccountsPage() {
     };
   }, []);
 
-  // Fetch accounts on component mount
+  // Lấy danh sách tài khoản khi component được mount
   useEffect(() => {
     if (isAdmin) {
       fetchAccounts();
     }
   }, [isAdmin]);
+
+  // Kiểm tra ủy quyền thành công khi tải trang
+  useEffect(() => {
+    const successParam = new URLSearchParams(window.location.search).get('success');
+    if (successParam === 'true') {
+      messageApi.success('Tài khoản đã được thêm thành công!');
+      // Xóa tham số success khỏi URL
+      window.history.replaceState({}, document.title, window.location.pathname);
+      
+      // Làm mới danh sách tài khoản
+      fetchAccounts();
+    }
+  }, [messageApi]);
 
   const fetchAccounts = async () => {
     try {
@@ -66,7 +78,7 @@ export default function TikTokAccountsPage() {
       setPagination(prev => ({ ...prev, total: data.length }));
     } catch (error) {
       messageApi.error("Không thể tải danh sách tài khoản");
-      console.error("Error fetching accounts:", error);
+      console.error("Lỗi khi lấy danh sách tài khoản:", error);
     } finally {
       setIsLoading(false);
     }
@@ -80,18 +92,18 @@ export default function TikTokAccountsPage() {
       form.setFieldsValue({
         appKey: account.appKey,
         appSecret: account.appSecret,
-        authCode: account.authCode,
+        serviceId: account.serviceId || "",
         sheets: account.sheets || "",
       });
       
-      // If we have an ID but not all account details, fetch the complete account
+      // Nếu có ID nhưng không có đầy đủ thông tin tài khoản, lấy thông tin chi tiết
       if (account._id && !account.shopCipher) {
         try {
           const completeAccount = await tikTokAccountService.getAccountById(account._id);
           setCurrentAccount(completeAccount);
         } catch (error) {
           messageApi.error("Không thể tải thông tin chi tiết tài khoản");
-          console.error("Error fetching account details:", error);
+          console.error("Lỗi khi lấy thông tin chi tiết tài khoản:", error);
         }
       }
     } else {
@@ -107,39 +119,13 @@ export default function TikTokAccountsPage() {
     setCurrentAccount(undefined);
   };
 
-  const handleOk = async () => {
-    try {
-      setIsSubmitting(true);
-      const values = await form.validateFields();
-      
-      if (editingId) {
-        // Update existing account
-        await tikTokAccountService.updateAccount(editingId, values);
-        messageApi.success("Cập nhật tài khoản thành công!");
-      } else {
-        // Add new account
-        await tikTokAccountService.createAccount(values);
-        messageApi.success("Thêm tài khoản thành công!");
-      }
-      
-      setIsModalVisible(false);
-      form.resetFields();
-      fetchAccounts(); // Refresh the accounts list
-    } catch (error) {
-      console.error("Validate or submit failed:", error);
-      messageApi.error("Có lỗi xảy ra khi lưu tài khoản");
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
   const handleDelete = async (id: string) => {
     try {
       await tikTokAccountService.deleteAccount(id);
       setAccounts(accounts.filter((account) => account._id !== id));
       messageApi.success("Xóa tài khoản thành công!");
     } catch (error) {
-      console.error("Delete failed:", error);
+      console.error("Lỗi khi xóa:", error);
       messageApi.error("Có lỗi xảy ra khi xóa tài khoản");
     }
   };
@@ -173,7 +159,7 @@ export default function TikTokAccountsPage() {
       
       messageApi.success(`Cron job đã ${newTaskStatus ? 'được kích hoạt' : 'bị vô hiệu hóa'}`);
     } catch (error) {
-      console.error("Toggle task status failed:", error);
+      console.error("Lỗi khi thay đổi trạng thái task:", error);
       messageApi.error("Có lỗi xảy ra khi thay đổi trạng thái cron job");
       
       // Nếu có lỗi, rollback lại state
@@ -181,7 +167,7 @@ export default function TikTokAccountsPage() {
     }
   };
 
-  // Functions for auto data retrieval
+  // Các hàm cho việc tự động lấy dữ liệu
   const handleAccountSelect = (value: string[]) => {
     setSelectedAccountIds(value);
   };
@@ -194,7 +180,7 @@ export default function TikTokAccountsPage() {
 
     setIsLoading(true);
     try {
-      // Process each selected account
+      // Xử lý từng tài khoản đã chọn
       const promises = selectedAccountIds.map(async (id) => {
         return tikTokAccountService.runAccountTask(id);
       });
@@ -202,7 +188,7 @@ export default function TikTokAccountsPage() {
       await Promise.all(promises);
       messageApi.success(`Đã cập nhật dữ liệu tháng hiện tại cho ${selectedAccountIds.length} tài khoản!`);
     } catch (error) {
-      console.error("Fetch current month error:", error);
+      console.error("Lỗi khi lấy dữ liệu tháng hiện tại:", error);
       messageApi.error("Có lỗi xảy ra khi cập nhật dữ liệu!");
     } finally {
       setIsLoading(false);
@@ -217,7 +203,7 @@ export default function TikTokAccountsPage() {
 
     setIsLoadingAll(true);
     try {
-      // Process each selected account
+      // Xử lý từng tài khoản đã chọn
       const promises = selectedAccountIds.map(async (id) => {
         return tikTokAccountService.runAccountTask(id);
       });
@@ -225,7 +211,7 @@ export default function TikTokAccountsPage() {
       await Promise.all(promises);
       messageApi.success(`Đã cập nhật dữ liệu tất cả các tháng cho ${selectedAccountIds.length} tài khoản!`);
     } catch (error) {
-      console.error("Fetch all months error:", error);
+      console.error("Lỗi khi lấy dữ liệu tất cả các tháng:", error);
       messageApi.error("Có lỗi xảy ra khi cập nhật dữ liệu!");
     } finally {
       setIsLoadingAll(false);
@@ -237,10 +223,10 @@ export default function TikTokAccountsPage() {
       await tikTokAccountService.updateAccountTask(accountId, taskData);
       messageApi.success("Cập nhật lịch trình thành công!");
       
-      // Refresh accounts to get updated task information
+      // Làm mới danh sách tài khoản để lấy thông tin task đã cập nhật
       fetchAccounts();
     } catch (error) {
-      console.error("Update task error:", error);
+      console.error("Lỗi khi cập nhật task:", error);
       messageApi.error("Có lỗi xảy ra khi cập nhật lịch trình!");
     }
   };
@@ -317,10 +303,10 @@ export default function TikTokAccountsPage() {
           form={form}
           editingId={editingId}
           isMobile={isMobile}
-          handleOk={handleOk}
+          handleOk={() => {}}
           handleCancel={handleCancel}
           currentAccount={currentAccount}
-          isSubmitting={isSubmitting}
+          isSubmitting={false}
         />
       </div>
     </ConfigProvider>
