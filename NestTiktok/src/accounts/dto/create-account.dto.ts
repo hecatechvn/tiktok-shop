@@ -5,6 +5,7 @@ import {
   IsArray,
   ValidateNested,
   IsNotEmpty,
+  IsEmail,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
@@ -64,6 +65,11 @@ export class CreateAccountDto {
   @IsOptional()
   @IsString()
   sheets?: string;
+
+  @IsArray()
+  @IsOptional()
+  @IsEmail({}, { each: true })
+  sheetEmails?: string[];
 
   @IsArray()
   @IsOptional()

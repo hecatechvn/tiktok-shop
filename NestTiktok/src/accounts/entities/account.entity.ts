@@ -92,6 +92,9 @@ export class Account {
   @Prop({ default: '' })
   sheetId: string;
 
+  @Prop({ default: [] })
+  sheetEmails: string[];
+
   @Prop({ default: '' })
   shopName: string;
 

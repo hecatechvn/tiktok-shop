@@ -28,6 +28,7 @@ export interface TikTokAccount {
   status: boolean;
   task?: Task;
   sheetId?: string;
+  sheetEmails?: string[];
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -44,6 +45,7 @@ export interface CreateAccountDto {
   appKey: string;
   serviceId: string;
   sheetId?: string;
+  sheetEmails?: string[];
 }
 
 export interface UpdateAccountDto {
@@ -52,6 +54,7 @@ export interface UpdateAccountDto {
   appKey?: string;
   serviceId?: string;
   sheetId?: string;
+  sheetEmails?: string[];
   status?: boolean;
 }
 

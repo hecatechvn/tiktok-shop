@@ -14,18 +14,23 @@ import {
   Input,
   Switch,
   message,
+  Tag,
+  List,
 } from "antd";
 import {
   QuestionCircleOutlined,
   SyncOutlined,
   DownloadOutlined,
   SaveOutlined,
+  DeleteOutlined,
+  MailOutlined,
 } from "@ant-design/icons";
-import { TikTokAccount, UpdateTaskDto } from "../../types/tikTokTypes";
+import { TikTokAccount, UpdateAccountDto, UpdateTaskDto } from "../../types/tikTokTypes";
 import cronstrue from 'cronstrue';
 import 'cronstrue/locales/vi';
 
 const { Option } = Select;
+const { Text } = Typography;
 
 interface DataRetrievalCardProps {
   accounts: TikTokAccount[];
@@ -37,6 +42,7 @@ interface DataRetrievalCardProps {
   handleFetchCurrentMonth: () => void;
   handleFetchAllMonths: () => void;
   handleUpdateTask: (accountId: string, taskData: UpdateTaskDto) => Promise<void>;
+  handleUpdateAccount?: (accountId: string, data: UpdateAccountDto) => Promise<void>;
 }
 
 const DataRetrievalCard: React.FC<DataRetrievalCardProps> = ({
@@ -49,6 +55,7 @@ const DataRetrievalCard: React.FC<DataRetrievalCardProps> = ({
   handleFetchCurrentMonth,
   handleFetchAllMonths,
   handleUpdateTask,
+  handleUpdateAccount,
 }) => {
   const [form] = Form.useForm();
   const [selectedFrequency, setSelectedFrequency] = useState<string>("daily");
@@ -59,6 +66,12 @@ const DataRetrievalCard: React.FC<DataRetrievalCardProps> = ({
   const [customCron, setCustomCron] = useState<boolean>(false);
   const [isTaskActive, setIsTaskActive] = useState<boolean>(false);
   const [isUpdatingStatus, setIsUpdatingStatus] = useState<boolean>(false);
+  
+  // Email management states
+  const [emailList, setEmailList] = useState<string[]>([]);
+  const [newEmail, setNewEmail] = useState<string>("");
+  const [emailError, setEmailError] = useState<string>("");
+  const [isUpdatingEmails, setIsUpdatingEmails] = useState<boolean>(false);
 
   // Cập nhật trạng thái isActive khi chọn tài khoản
   useEffect(() => {
@@ -115,15 +128,20 @@ const DataRetrievalCard: React.FC<DataRetrievalCardProps> = ({
           setSelectedFrequency("daily");
           setCustomCron(false);
         }
+        
+        // Cập nhật danh sách email
+        setEmailList(selectedAccount.sheetEmails || []);
       } else {
         setIsTaskActive(false);
         setCronExpression("0 0 * * *");
         setCronDescription(cronstrue.toString("0 0 * * *", { verbose: true, locale: "vi" }));
         setSelectedFrequency("daily");
         setCustomCron(false);
+        setEmailList([]);
       }
     } else {
       setIsTaskActive(false);
+      setEmailList([]);
     }
   }, [selectedAccountIds, accounts, form]);
 
@@ -210,9 +228,72 @@ const DataRetrievalCard: React.FC<DataRetrievalCardProps> = ({
     }
   };
 
+  // Email validation function
+  const validateEmail = (email: string): boolean => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
+  };
+
+  // Handle adding new email
+  const handleAddEmail = () => {
+    if (!newEmail) {
+      setEmailError("Email không được để trống");
+      message.error("Email không được để trống");
+      return;
+    }
+    
+    if (!validateEmail(newEmail)) {
+      setEmailError("Email không đúng định dạng");
+      message.error("Email không đúng định dạng");
+      return;
+    }
+    
+    if (emailList.includes(newEmail)) {
+      setEmailError("Email đã tồn tại trong danh sách");
+      message.error("Email đã tồn tại trong danh sách");
+      return;
+    }
+    
+    setEmailError("");
+    setEmailList([...emailList, newEmail]);
+    setNewEmail("");
+    message.success("Đã thêm email vào danh sách");
+  };
+
+  // Handle removing email
+  const handleRemoveEmail = (email: string) => {
+    setEmailList(emailList.filter(e => e !== email));
+  };
+
+  // Handle saving email list
+  const handleSaveEmails = async () => {
+    if (selectedAccountIds.length !== 1) {
+      message.warning("Vui lòng chọn một tài khoản để cập nhật danh sách email");
+      return;
+    }
+    
+    try {
+      setIsUpdatingEmails(true);
+      
+      if (handleUpdateAccount) {
+        await handleUpdateAccount(selectedAccountIds[0], { 
+          sheetEmails: emailList 
+        });
+        message.success("Cập nhật danh sách email thành công");
+      } else {
+        message.error("Không thể cập nhật danh sách email");
+      }
+    } catch (error) {
+      console.error("Save emails error:", error);
+      message.error(error instanceof Error ? error.message : "Có lỗi xảy ra khi lưu danh sách email");
+    } finally {
+      setIsUpdatingEmails(false);
+    }
+  };
+
   return (
     <Card 
-      title={<Typography.Title level={4}>Cấu hình tự động lấy dữ liệu</Typography.Title>}
+      title={<Typography.Title level={4}>Cấu hình tiktok shop</Typography.Title>}
       styles={{ body: { padding: 24 } }}
       style={{ marginTop: 24, marginBottom: 24 }}
       className="auto-data-config"
@@ -269,6 +350,97 @@ const DataRetrievalCard: React.FC<DataRetrievalCardProps> = ({
                 />
               )}
             </Form>
+          </Card>
+          
+          {/* Email Management Card */}
+          <Card
+            type="inner"
+            title={
+              <span>
+                <MailOutlined /> Quản lý danh sách email
+              </span>
+            }
+            extra={<Tooltip title="Quản lý danh sách email nhận báo cáo"><QuestionCircleOutlined /></Tooltip>}
+            style={{ marginTop: 16 }}
+          >
+            <Space direction="vertical" style={{ width: '100%' }}>
+              <Alert
+                message="Email sẽ được sử dụng để chia sẻ báo cáo Google Sheets"
+                type="info"
+                showIcon
+              />
+              
+              <div style={{ marginTop: 16 }}>
+                <Form layout="vertical">
+                  <Form.Item 
+                    label="Thêm email mới"
+                    help={emailError ? <Text type="danger">{emailError}</Text> : null}
+                    validateStatus={emailError ? "error" : ""}
+                    style={{ marginBottom: emailError ? 0 : 16 }}
+                  >
+                    <Input.Search
+                      placeholder="Nhập email"
+                      enterButton="Thêm"
+                      value={newEmail}
+                      onChange={(e) => {
+                        setNewEmail(e.target.value);
+                        setEmailError("");
+                      }}
+                      onSearch={handleAddEmail}
+                      disabled={selectedAccountIds.length !== 1 || isUpdatingEmails}
+                      style={{ width: '100%' }}
+                      allowClear
+                    />
+                  </Form.Item>
+                </Form>
+              </div>
+              
+              <div style={{ marginTop: 8 }}>
+                <Text strong>Danh sách email ({emailList.length})</Text>
+                {emailList.length > 0 ? (
+                  <List
+                    size="small"
+                    dataSource={emailList}
+                    style={{ marginTop: 8 }}
+                    renderItem={(email) => (
+                      <List.Item
+                        actions={[
+                          <Button
+                            key="delete"
+                            type="text"
+                            danger
+                            icon={<DeleteOutlined />}
+                            onClick={() => handleRemoveEmail(email)}
+                            disabled={selectedAccountIds.length !== 1 || isUpdatingEmails}
+                          />
+                        ]}
+                      >
+                        <Tag color="blue">{email}</Tag>
+                      </List.Item>
+                    )}
+                  />
+                ) : (
+                  <Alert
+                    message="Chưa có email nào trong danh sách"
+                    type="warning"
+                    showIcon
+                    style={{ marginTop: 8 }}
+                  />
+                )}
+              </div>
+              
+              <Button
+                type="primary"
+                icon={<SaveOutlined />}
+                onClick={handleSaveEmails}
+                disabled={selectedAccountIds.length !== 1}
+                loading={isUpdatingEmails}
+                style={{ marginTop: 16 }}
+                block
+              >
+                Lưu danh sách email
+              </Button>
+            </Space>
           </Card>
         </Col>
         <Col xs={24} lg={12}>

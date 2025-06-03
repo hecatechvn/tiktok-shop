@@ -1,5 +1,11 @@
 import { PartialType } from '@nestjs/mapped-types';
-import { IsOptional, IsString, IsBoolean } from 'class-validator';
+import {
+  IsOptional,
+  IsString,
+  IsBoolean,
+  IsArray,
+  IsEmail,
+} from 'class-validator';
 import { CreateAccountDto } from './create-account.dto';
 
 export class UpdateAccountDto extends PartialType(CreateAccountDto) {
@@ -22,6 +28,11 @@ export class UpdateAccountDto extends PartialType(CreateAccountDto) {
   @IsOptional()
   @IsString()
   sheetId?: string;
+
+  @IsOptional()
+  @IsArray()
+  @IsEmail({}, { each: true })
+  sheetEmails?: string[];
 
   @IsOptional()
   @IsBoolean()

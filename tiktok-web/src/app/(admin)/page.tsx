@@ -11,7 +11,7 @@ import {
   Alert,
 } from "antd";
 import { PlusOutlined } from "@ant-design/icons";
-import { TikTokAccount, PaginationType, UpdateTaskDto } from "../../types/tikTokTypes";
+import { TikTokAccount, PaginationType, UpdateTaskDto, UpdateAccountDto } from "../../types/tikTokTypes";
 import { AccountsTable, AccountModal, DataRetrievalCard } from "../../components/TikTokAccounts";
 import { tikTokAccountService } from "../../services/tikTokAccountService";
 import { useAuth } from "../../lib/auth";
@@ -231,10 +231,28 @@ export default function TikTokAccountsPage() {
     }
   };
 
+  // Hàm cập nhật thông tin tài khoản
+  const handleUpdateAccount = async (accountId: string, data: UpdateAccountDto) => {
+    try {
+      await tikTokAccountService.updateAccount(accountId, data);
+      messageApi.success("Cập nhật tài khoản thành công!");
+      
+      // Làm mới danh sách tài khoản để lấy thông tin mới
+      fetchAccounts();
+    } catch (error) {
+      console.error("Lỗi khi cập nhật tài khoản:", error);
+      messageApi.error("Có lỗi xảy ra khi cập nhật tài khoản!");
+      throw error;
+    }
+  };
+
   if (isAuthLoading) {
     return (
       <div className="flex justify-center items-center h-screen">
-        <Spin size="large" tip="Đang kiểm tra quyền truy cập..." />
+        <div className="text-center">
+          <Spin size="large" />
+          <div className="mt-2">Đang kiểm tra quyền truy cập...</div>
+        </div>
       </div>
     );
   }
@@ -255,7 +273,10 @@ export default function TikTokAccountsPage() {
   if (isLoading && accounts.length === 0) {
     return (
       <div className="flex justify-center items-center h-screen">
-        <Spin size="large" tip="Đang tải dữ liệu..." />
+        <div className="text-center">
+          <Spin size="large" />
+          <div className="mt-2">Đang tải dữ liệu...</div>
+        </div>
       </div>
     );
   }
@@ -281,7 +302,6 @@ export default function TikTokAccountsPage() {
           pagination={pagination}
           setPagination={setPagination}
           toggleStatus={toggleStatus}
-          showModal={showModal}
           handleDelete={handleDelete}
           isLoading={isLoading}
         />
@@ -296,6 +316,7 @@ export default function TikTokAccountsPage() {
           handleFetchCurrentMonth={handleFetchCurrentMonth}
           handleFetchAllMonths={handleFetchAllMonths}
           handleUpdateTask={handleUpdateTask}
+          handleUpdateAccount={handleUpdateAccount}
         />
 
         <AccountModal 

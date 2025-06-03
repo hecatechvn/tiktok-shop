@@ -396,6 +396,7 @@ export class TasksService implements OnModuleInit {
       };
 
       if (!checkExist) {
+        // Sheet không tồn tại, tạo mới sheet và thêm tất cả dữ liệu
         await this.googleSheetsService.addSheet({
           spreadsheetId,
           sheetTitle: sheetName,
@@ -425,20 +426,22 @@ export class TasksService implements OnModuleInit {
           );
         }
       } else {
-        // Đọc dữ liệu hiện có
+        // Sheet đã tồn tại, đọc dữ liệu hiện có
         const existingData = await this.googleSheetsService.readSheet({
           spreadsheetId,
           range: `${sheetName}!A:Z`,
         });
 
-        if (existingData.length === 0) {
-          // Sheet tồn tại nhưng trống, thêm header
-          await this.googleSheetsService.writeToSheet({
-            spreadsheetId,
-            range: `${sheetName}!A1`,
-            values: [header],
-          });
-          await checkAndWaitForQuota();
+        if (existingData.length === 0 || existingData.length === 1) {
+          // Sheet tồn tại nhưng trống hoặc chỉ có header, thêm header nếu cần
+          if (existingData.length === 0) {
+            await this.googleSheetsService.writeToSheet({
+              spreadsheetId,
+              range: `${sheetName}!A1`,
+              values: [header],
+            });
+            await checkAndWaitForQuota();
+          }
 
           // Chia dữ liệu thành các batch nhỏ và ghi từng batch
           for (let i = 0; i < mappingOrder.length; i += BATCH_SIZE) {
@@ -455,7 +458,7 @@ export class TasksService implements OnModuleInit {
             );
           }
         } else {
-          // Tạo map các đơn hàng hiện có theo ID đơn hàng
+          // Sheet có dữ liệu, phân loại đơn hàng thành "cần cập nhật" và "cần thêm mới"
           const existingOrdersMap = new Map<string, number>();
           for (let i = 1; i < existingData.length; i++) {
             // Bỏ qua dòng header
@@ -466,7 +469,6 @@ export class TasksService implements OnModuleInit {
             }
           }
 
-          // Phân loại đơn hàng thành "cần cập nhật" và "cần thêm mới"
           interface OrderToUpdate {
             rowIndex: number;
             data: SheetValue[];
@@ -481,9 +483,11 @@ export class TasksService implements OnModuleInit {
               // Đơn hàng đã tồn tại, cần cập nhật
               const rowIndex = existingOrdersMap.get(orderId as string)!;
               ordersToUpdate.push({ rowIndex, data: order });
-            } else if (!updateOnly) {
-              // Đơn hàng mới, cần thêm (chỉ khi updateOnly là false)
-              ordersToAdd.push(order);
+            } else {
+              // Đơn hàng mới, cần thêm (chỉ thêm khi updateOnly là false)
+              if (!updateOnly) {
+                ordersToAdd.push(order);
+              }
             }
           });
 
@@ -513,8 +517,8 @@ export class TasksService implements OnModuleInit {
             }
           }
 
-          // Thêm đơn hàng mới theo batch nếu không ở chế độ chỉ cập nhật
-          if (!updateOnly && ordersToAdd.length > 0) {
+          // Thêm đơn hàng mới theo batch (nếu có và không ở chế độ chỉ cập nhật)
+          if (ordersToAdd.length > 0) {
             for (let i = 0; i < ordersToAdd.length; i += BATCH_SIZE) {
               const batch = ordersToAdd.slice(i, i + BATCH_SIZE);
               await this.googleSheetsService.appendToSheet({

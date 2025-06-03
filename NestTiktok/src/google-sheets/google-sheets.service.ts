@@ -231,6 +231,48 @@ export class GoogleSheetsService {
   }
 
   /**
+   * Thu hồi quyền truy cập của một người dùng đối với bảng tính
+   * @param spreadsheetId - ID của bảng tính
+   * @param email - Địa chỉ email của người dùng cần thu hồi quyền
+   * @returns Promise hoàn thành khi việc thu hồi quyền hoàn tất
+   */
+  async revokeAccess(spreadsheetId: string, email: string): Promise<void> {
+    try {
+      const drive = await this.getDriveClient();
+
+      // Tìm permission ID dựa trên email
+      const response = await drive.permissions.list({
+        fileId: spreadsheetId,
+        fields: 'permissions(id,emailAddress)',
+      });
+
+      const permissions = response.data.permissions || [];
+      const permission = permissions.find((p) => p.emailAddress === email);
+
+      if (permission && permission.id) {
+        // Xóa quyền truy cập
+        await drive.permissions.delete({
+          fileId: spreadsheetId,
+          permissionId: permission.id,
+        });
+        this.logger.log(
+          `Access revoked for ${email} on sheet ${spreadsheetId}`,
+        );
+      } else {
+        this.logger.warn(
+          `No permission found for ${email} on sheet ${spreadsheetId}`,
+        );
+      }
+    } catch (error) {
+      this.logger.error(
+        `Error revoking access for ${email} on sheet ${spreadsheetId}:`,
+        error instanceof Error ? error.message : String(error),
+      );
+      throw error;
+    }
+  }
+
+  /**
    * Tạo một bảng tính mới với tiêu đề đã cho
    * @param title - Tiêu đề cho bảng tính mới
    * @param shareWithEmail - Email tùy chọn để chia sẻ bảng tính

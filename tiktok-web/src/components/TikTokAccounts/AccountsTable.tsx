@@ -12,7 +12,6 @@ import {
 } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import {
-  EditOutlined,
   DeleteOutlined,
   QuestionCircleOutlined,
   KeyOutlined,
@@ -115,7 +114,6 @@ interface AccountsTableProps {
   pagination: PaginationType;
   setPagination: (pagination: PaginationType) => void;
   toggleStatus: (id: string) => void;
-  showModal: (account?: TikTokAccount) => void;
   handleDelete: (id: string) => void;
   isLoading: boolean;
 }
@@ -126,7 +124,6 @@ const AccountsTable: React.FC<AccountsTableProps> = ({
   pagination,
   setPagination,
   toggleStatus,
-  showModal,
   handleDelete,
   isLoading,
 }) => {
@@ -255,11 +252,6 @@ const AccountsTable: React.FC<AccountsTableProps> = ({
         key: "action",
         render: (_: unknown, record: TikTokAccount) => (
           <Space size="middle">
-            <Button
-              type="text"
-              icon={<EditOutlined />}
-              onClick={() => showModal(record)}
-            />
             <Popconfirm
               title="Bạn có chắc chắn muốn xóa tài khoản này?"
               onConfirm={() => handleDelete(record._id || "")}

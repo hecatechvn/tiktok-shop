@@ -21,7 +21,7 @@ export const tikTokAccountService = {
 
   // Update account
   updateAccount: async (id: string, data: UpdateAccountDto): Promise<TikTokAccount> => {
-    return api.put(`${BASE_URL}/${id}`, data as unknown as Record<string, unknown>);
+    return api.patch(`${BASE_URL}/${id}`, data as unknown as Record<string, unknown>);
   },
 
   // Delete account
@@ -31,7 +31,7 @@ export const tikTokAccountService = {
 
   // Toggle account status
   toggleAccountStatus: async (id: string, status: boolean): Promise<TikTokAccount> => {
-    return api.put(`${BASE_URL}/${id}`, { status } as Record<string, unknown>);
+    return api.patch(`${BASE_URL}/${id}`, { status } as Record<string, unknown>);
   },
 
   // Get account task
@@ -46,6 +46,6 @@ export const tikTokAccountService = {
 
   // Run account task manually
   runAccountTask: async (id: string, isAllMonth: boolean): Promise<TikTokAccount> => {
-    return api.patch(`${BASE_URL}/${id}/task/run`, {isAllMonth} as Record<string, unknown>);
+    return api.patch(`${BASE_URL}/${id}/task/run`, {isAllMonth} as unknown as Record<string, unknown>);
   }
 }; 

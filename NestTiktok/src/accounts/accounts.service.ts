@@ -13,8 +13,12 @@ import { UpdateAccountDto } from './dto/update-account.dto';
 import { GoogleSheetsService } from 'src/google-sheets/google-sheets.service';
 import { TasksService } from 'src/tasks/tasks.service';
 import { ConfigService } from '@nestjs/config';
+import { Logger } from '@nestjs/common';
+
 @Injectable()
 export class AccountsService {
+  private readonly logger = new Logger(AccountsService.name);
+
   constructor(
     private readonly tiktokService: TiktokService,
     @InjectModel(Account.name)
@@ -73,6 +77,15 @@ export class AccountsService {
         userEmail,
       );
 
+      // Chia sẻ Google Sheet với tất cả các email trong danh sách sheetEmails nếu có
+      if (
+        sheetId &&
+        createAccountDto.sheetEmails &&
+        createAccountDto.sheetEmails.length > 0
+      ) {
+        await this.updateSheetSharing(sheetId, createAccountDto.sheetEmails);
+      }
+
       if (getShopCipher.code === 0) {
         const { shops } = getShopCipher.data;
         const account = new this.accountModel({
@@ -90,6 +103,7 @@ export class AccountsService {
             lastRun: new Date(),
           },
           sheetId,
+          sheetEmails: createAccountDto.sheetEmails || [],
         });
         return account.save();
       }
@@ -108,6 +122,7 @@ export class AccountsService {
           lastRun: new Date(),
         },
         sheetId,
+        sheetEmails: createAccountDto.sheetEmails || [],
       });
       return account.save();
     }
@@ -125,26 +140,148 @@ export class AccountsService {
   }
 
   async update(id: string, updateAccountDto: UpdateAccountDto) {
-    const account = await this.accountModel.findByIdAndUpdate(
+    // Kiểm tra nếu có cập nhật danh sách email
+    if (updateAccountDto.sheetEmails) {
+      const account = await this.accountModel.findById(id);
+      if (account && account.sheetId) {
+        // Lấy danh sách email hiện tại từ account
+        const currentEmails = account.sheetEmails || [];
+
+        // Cập nhật quyền truy cập cho các email
+        await this.updateSheetSharing(
+          account.sheetId,
+          updateAccountDto.sheetEmails,
+          currentEmails,
+        );
+      }
+    }
+
+    const updatedAccount = await this.accountModel.findByIdAndUpdate(
       id,
       updateAccountDto,
       { new: true },
     );
-    return account;
+    return updatedAccount;
+  }
+
+  /**
+   * Cập nhật việc chia sẻ Google Sheet với danh sách email mới
+   * @param sheetId - ID của Google Sheet
+   * @param newEmails - Danh sách email mới cần chia sẻ
+   * @param currentEmails - Danh sách email hiện tại đang được chia sẻ
+   */
+  async updateSheetSharing(
+    sheetId: string,
+    newEmails: string[],
+    currentEmails: string[] = [],
+  ): Promise<void> {
+    try {
+      // Tìm các email đã bị xóa (có trong danh sách cũ nhưng không có trong danh sách mới)
+      const removedEmails = currentEmails.filter(
+        (email) => !newEmails.includes(email),
+      );
+
+      // Thu hồi quyền truy cập cho các email đã bị xóa
+      for (const email of removedEmails) {
+        try {
+          await this.googleSheetsService.revokeAccess(sheetId, email);
+          this.logger.log(
+            `Đã thu hồi quyền truy cập sheet ${sheetId} từ email ${email}`,
+          );
+        } catch (revokeError) {
+          this.logger.error(
+            `Lỗi khi thu hồi quyền truy cập sheet ${sheetId} từ email ${email}:`,
+            revokeError instanceof Error
+              ? revokeError.message
+              : String(revokeError),
+          );
+          // Tiếp tục với email tiếp theo ngay cả khi có lỗi
+        }
+      }
+
+      // Chia sẻ Google Sheet với từng email mới trong danh sách
+      for (const email of newEmails) {
+        try {
+          // Chỉ cấp quyền cho các email mới (không có trong danh sách cũ)
+          if (!currentEmails.includes(email)) {
+            await this.googleSheetsService.shareSheet(sheetId, email, 'writer');
+            this.logger.log(`Đã chia sẻ sheet ${sheetId} với email ${email}`);
+          }
+        } catch (shareError) {
+          this.logger.error(
+            `Lỗi khi chia sẻ sheet ${sheetId} với email ${email}:`,
+            shareError instanceof Error
+              ? shareError.message
+              : String(shareError),
+          );
+          // Tiếp tục với email tiếp theo ngay cả khi có lỗi
+        }
+      }
+
+      this.logger.log(
+        `Đã cập nhật chia sẻ sheet ${sheetId}: thêm ${newEmails.length - currentEmails.length} email mới, thu hồi ${removedEmails.length} email`,
+      );
+    } catch (error) {
+      this.logger.error(
+        `Lỗi khi cập nhật chia sẻ sheet ${sheetId}:`,
+        error instanceof Error ? error.message : String(error),
+      );
+      throw error;
+    }
   }
 
   async remove(id: string) {
+    // Tìm tài khoản trước khi xóa
+    const account = await this.accountModel.findById(id);
+    if (!account) {
+      return null;
+    }
+
+    // Nếu có sheet ID và danh sách email, thu hồi quyền truy cập
+    if (
+      account.sheetId &&
+      account.sheetEmails &&
+      account.sheetEmails.length > 0
+    ) {
+      try {
+        // Thu hồi quyền truy cập cho tất cả email
+        for (const email of account.sheetEmails) {
+          try {
+            await this.googleSheetsService.revokeAccess(account.sheetId, email);
+            this.logger.log(
+              `Đã thu hồi quyền truy cập sheet ${account.sheetId} từ email ${email}`,
+            );
+          } catch (revokeError) {
+            this.logger.error(
+              `Lỗi khi thu hồi quyền truy cập sheet ${account.sheetId} từ email ${email}:`,
+              revokeError instanceof Error
+                ? revokeError.message
+                : String(revokeError),
+            );
+          }
+        }
+      } catch (error) {
+        this.logger.error(
+          `Lỗi khi thu hồi quyền truy cập sheet ${account.sheetId}:`,
+          error instanceof Error ? error.message : String(error),
+        );
+        // Tiếp tục xóa tài khoản ngay cả khi có lỗi thu hồi quyền
+      }
+    }
+
     // Xóa cronjob trước khi xóa tài khoản
     try {
       // Gọi phương thức xóa task từ TasksService
       this.tasksService.deleteAccountJob(id);
     } catch (error) {
-      console.error(`Lỗi khi xóa cronjob cho tài khoản ${id}:`, error);
+      this.logger.error(
+        `Lỗi khi xóa cronjob cho tài khoản ${id}:`,
+        error instanceof Error ? error.message : String(error),
+      );
     }
 
     // Xóa tài khoản từ database
-    const account = await this.accountModel.findByIdAndDelete(id);
-    return account;
+    return this.accountModel.findByIdAndDelete(id);
   }
 
   // Phương thức quản lý task

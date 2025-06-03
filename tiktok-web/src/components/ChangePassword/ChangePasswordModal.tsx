@@ -15,7 +15,7 @@ const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({ open, onClose
       onCancel={onClose}
       footer={null}
       width={520}
-      destroyOnClose
+      destroyOnHidden
     >
       <ChangePasswordForm onSuccess={onClose} />
     </Modal>
