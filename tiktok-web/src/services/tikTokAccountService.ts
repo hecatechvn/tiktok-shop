@@ -45,7 +45,7 @@ export const tikTokAccountService = {
   },
 
   // Run account task manually
-  runAccountTask: async (id: string): Promise<TikTokAccount> => {
-    return api.patch(`${BASE_URL}/${id}/task/run`, {} as Record<string, unknown>);
+  runAccountTask: async (id: string, isAllMonth: boolean): Promise<TikTokAccount> => {
+    return api.patch(`${BASE_URL}/${id}/task/run`, {isAllMonth} as Record<string, unknown>);
   }
 }; 

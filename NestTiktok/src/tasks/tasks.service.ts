@@ -363,18 +363,67 @@ export class TasksService implements OnModuleInit {
         sheetName,
       );
 
+      // Kích thước batch để tránh giới hạn API của Google Sheets
+      const BATCH_SIZE = 50;
+      // Giới hạn quota: 60 write requests/phút/user
+      const QUOTA_LIMIT = 60;
+      let requestCount = 0;
+      let startTime = Date.now();
+
+      // Hàm trợ giúp để đảm bảo không vượt quá quota
+      const checkAndWaitForQuota = async () => {
+        requestCount++;
+        if (requestCount >= QUOTA_LIMIT) {
+          const elapsedMs = Date.now() - startTime;
+          const oneMinuteInMs = 60 * 1000;
+
+          // Nếu chưa đủ 1 phút, đợi thêm
+          if (elapsedMs < oneMinuteInMs) {
+            const waitTime = oneMinuteInMs - elapsedMs + 500; // Thêm 500ms để đảm bảo an toàn
+            console.log(
+              `Đã đạt giới hạn quota, đợi ${waitTime}ms trước khi tiếp tục`,
+            );
+            await new Promise((resolve) => setTimeout(resolve, waitTime));
+          }
+
+          // Reset counter và thời gian bắt đầu
+          requestCount = 0;
+          startTime = Date.now();
+        } else {
+          // Đợi một chút giữa các lần gọi API để tránh quá tải
+          await new Promise((resolve) => setTimeout(resolve, 100));
+        }
+      };
+
       if (!checkExist) {
         await this.googleSheetsService.addSheet({
           spreadsheetId,
           sheetTitle: sheetName,
         });
+        await checkAndWaitForQuota();
 
-        // Ghi header và dữ liệu
+        // Ghi header trước
         await this.googleSheetsService.writeToSheet({
           spreadsheetId,
           range: `${sheetName}!A1`,
-          values: [header, ...mappingOrder],
+          values: [header],
         });
+        await checkAndWaitForQuota();
+
+        // Chia dữ liệu thành các batch nhỏ và ghi từng batch
+        for (let i = 0; i < mappingOrder.length; i += BATCH_SIZE) {
+          const batch = mappingOrder.slice(i, i + BATCH_SIZE);
+          await this.googleSheetsService.appendToSheet({
+            spreadsheetId,
+            range: `${sheetName}!A2`,
+            values: batch,
+          });
+          await checkAndWaitForQuota();
+
+          console.log(
+            `Đã ghi batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(mappingOrder.length / BATCH_SIZE)} cho sheet ${sheetName}`,
+          );
+        }
       } else {
         // Đọc dữ liệu hiện có
         const existingData = await this.googleSheetsService.readSheet({
@@ -383,12 +432,28 @@ export class TasksService implements OnModuleInit {
         });
 
         if (existingData.length === 0) {
-          // Sheet tồn tại nhưng trống, thêm header và dữ liệu
+          // Sheet tồn tại nhưng trống, thêm header
           await this.googleSheetsService.writeToSheet({
             spreadsheetId,
             range: `${sheetName}!A1`,
-            values: [header, ...mappingOrder],
+            values: [header],
           });
+          await checkAndWaitForQuota();
+
+          // Chia dữ liệu thành các batch nhỏ và ghi từng batch
+          for (let i = 0; i < mappingOrder.length; i += BATCH_SIZE) {
+            const batch = mappingOrder.slice(i, i + BATCH_SIZE);
+            await this.googleSheetsService.appendToSheet({
+              spreadsheetId,
+              range: `${sheetName}!A2`,
+              values: batch,
+            });
+            await checkAndWaitForQuota();
+
+            console.log(
+              `Đã ghi batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(mappingOrder.length / BATCH_SIZE)} cho sheet ${sheetName}`,
+            );
+          }
         } else {
           // Tạo map các đơn hàng hiện có theo ID đơn hàng
           const existingOrdersMap = new Map<string, number>();
@@ -422,29 +487,47 @@ export class TasksService implements OnModuleInit {
             }
           });
 
-          // Cập nhật đơn hàng hiện có
+          // Cập nhật đơn hàng hiện có theo batch
           if (ordersToUpdate.length > 0) {
             // Sắp xếp theo chỉ số dòng cho hiệu quả
             ordersToUpdate.sort((a, b) => a.rowIndex - b.rowIndex);
 
-            // Cập nhật từng đơn hàng
-            for (const { rowIndex, data } of ordersToUpdate) {
-              const range = `${sheetName}!A${rowIndex}:X${rowIndex}`;
-              await this.googleSheetsService.writeToSheet({
-                spreadsheetId,
-                range,
-                values: [data],
-              });
+            // Chia thành các batch nhỏ
+            for (let i = 0; i < ordersToUpdate.length; i += BATCH_SIZE) {
+              const batchUpdates = ordersToUpdate.slice(i, i + BATCH_SIZE);
+
+              // Cập nhật từng đơn hàng trong batch
+              for (const { rowIndex, data } of batchUpdates) {
+                const range = `${sheetName}!A${rowIndex}:X${rowIndex}`;
+                await this.googleSheetsService.writeToSheet({
+                  spreadsheetId,
+                  range,
+                  values: [data],
+                });
+                await checkAndWaitForQuota();
+              }
+
+              console.log(
+                `Đã cập nhật batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(ordersToUpdate.length / BATCH_SIZE)} cho sheet ${sheetName}`,
+              );
             }
           }
 
-          // Thêm đơn hàng mới nếu không ở chế độ chỉ cập nhật
+          // Thêm đơn hàng mới theo batch nếu không ở chế độ chỉ cập nhật
           if (!updateOnly && ordersToAdd.length > 0) {
-            await this.googleSheetsService.appendToSheet({
-              spreadsheetId,
-              range: `${sheetName}!A:Z`,
-              values: ordersToAdd,
-            });
+            for (let i = 0; i < ordersToAdd.length; i += BATCH_SIZE) {
+              const batch = ordersToAdd.slice(i, i + BATCH_SIZE);
+              await this.googleSheetsService.appendToSheet({
+                spreadsheetId,
+                range: `${sheetName}!A:Z`,
+                values: batch,
+              });
+              await checkAndWaitForQuota();
+
+              console.log(
+                `Đã thêm batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(ordersToAdd.length / BATCH_SIZE)} cho sheet ${sheetName}`,
+              );
+            }
           }
         }
       }
@@ -476,7 +559,7 @@ export class TasksService implements OnModuleInit {
   }
 
   // Phương thức xử lý và ghi dữ liệu đơn hàng của tháng hiện tại và cập nhật tháng trước
-  private async runWriteSheetCurrentMonthAndUpdatePreviousMonth(
+  public async runWriteSheetCurrentMonthAndUpdatePreviousMonth(
     account: AccountDocument,
   ) {
     const options: Partial<CommonParams> = {
@@ -678,7 +761,7 @@ export class TasksService implements OnModuleInit {
 
       try {
         // Sử dụng hàm writeDataToSheet để xử lý dữ liệu
-        const isCurrentMonth = parseInt(month) === currentMonth;
+        const isCurrentMonth = parseInt(month) === currentMonth + 1;
 
         // Nếu là tháng hiện tại, cho phép thêm đơn hàng mới (updateOnly = false)
         // Nếu không phải tháng hiện tại, chỉ cập nhật đơn hàng hiện có (updateOnly = true)

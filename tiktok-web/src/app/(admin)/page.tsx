@@ -182,7 +182,7 @@ export default function TikTokAccountsPage() {
     try {
       // Xử lý từng tài khoản đã chọn
       const promises = selectedAccountIds.map(async (id) => {
-        return tikTokAccountService.runAccountTask(id);
+        return tikTokAccountService.runAccountTask(id, false);
       });
       
       await Promise.all(promises);
@@ -205,7 +205,7 @@ export default function TikTokAccountsPage() {
     try {
       // Xử lý từng tài khoản đã chọn
       const promises = selectedAccountIds.map(async (id) => {
-        return tikTokAccountService.runAccountTask(id);
+        return tikTokAccountService.runAccountTask(id, true);
       });
       
       await Promise.all(promises);

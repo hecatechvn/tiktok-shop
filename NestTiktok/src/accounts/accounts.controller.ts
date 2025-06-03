@@ -83,10 +83,17 @@ export class AccountsController {
   }
 
   @Patch(':id/task/run')
-  async updateTaskLastRun(@Param('id') id: string) {
+  async updateTaskLastRun(
+    @Param('id') id: string,
+    @Body() body: { isAllMonth: boolean },
+  ) {
     const result = await this.accountsService.updateTaskLastRun(id);
-    if (result) {
+    if (result && body.isAllMonth) {
       await this.tasksService.runWriteSheetAllMonth(result);
+    } else if (result && !body.isAllMonth) {
+      await this.tasksService.runWriteSheetCurrentMonthAndUpdatePreviousMonth(
+        result,
+      );
     }
     return result;
   }

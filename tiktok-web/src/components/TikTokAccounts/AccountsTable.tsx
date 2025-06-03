@@ -26,6 +26,89 @@ import dayjs from "dayjs";
 
 const { Text } = Typography;
 
+// Function to convert cron expression to human-readable text
+const cronToHumanReadable = (cronExpression: string): string => {
+  if (!cronExpression) return "Không xác định";
+  
+  const parts = cronExpression.split(" ");
+  if (parts.length !== 5) return "Định dạng không hợp lệ";
+  
+  const [minute, hour, dayOfMonth, month, dayOfWeek] = parts;
+  
+  // Common patterns
+  if (minute === "0" && hour === "0" && dayOfMonth === "*" && month === "*" && dayOfWeek === "*") {
+    return "Hàng ngày lúc 00:00";
+  }
+  
+  if (minute === "0" && dayOfMonth === "*" && month === "*" && dayOfWeek === "*") {
+    return `Hàng ngày lúc ${hour}:00`;
+  }
+  
+  if (dayOfMonth === "*" && month === "*" && dayOfWeek === "*") {
+    return `Hàng ngày lúc ${hour}:${minute.padStart(2, '0')}`;
+  }
+  
+  if (dayOfMonth === "*" && month === "*" && dayOfWeek !== "*") {
+    const days = {
+      "0": "Chủ nhật",
+      "1": "Thứ hai",
+      "2": "Thứ ba",
+      "3": "Thứ tư",
+      "4": "Thứ năm",
+      "5": "Thứ sáu",
+      "6": "Thứ bảy",
+    };
+    
+    // Handle day of week ranges or lists
+    if (dayOfWeek.includes("-") || dayOfWeek.includes(",")) {
+      if (dayOfWeek === "1-5") {
+        return `Các ngày trong tuần lúc ${hour}:${minute.padStart(2, '0')}`;
+      } else if (dayOfWeek === "0,6") {
+        return `Cuối tuần lúc ${hour}:${minute.padStart(2, '0')}`;
+      } else {
+        return `Một số ngày trong tuần lúc ${hour}:${minute.padStart(2, '0')}`;
+      }
+    }
+    
+    if (Object.keys(days).includes(dayOfWeek)) {
+      return `${days[dayOfWeek as keyof typeof days]} lúc ${hour}:${minute.padStart(2, '0')}`;
+    }
+  }
+  
+  // Handle specific day of month
+  if (dayOfMonth !== "*" && month === "*" && dayOfWeek === "*") {
+    return `Ngày ${dayOfMonth} hàng tháng lúc ${hour}:${minute.padStart(2, '0')}`;
+  }
+  
+  // Handle specific month
+  if (dayOfMonth !== "*" && month !== "*" && dayOfWeek === "*") {
+    const months = {
+      "1": "Tháng 1", "2": "Tháng 2", "3": "Tháng 3", "4": "Tháng 4",
+      "5": "Tháng 5", "6": "Tháng 6", "7": "Tháng 7", "8": "Tháng 8",
+      "9": "Tháng 9", "10": "Tháng 10", "11": "Tháng 11", "12": "Tháng 12"
+    };
+    
+    if (Object.keys(months).includes(month)) {
+      return `Ngày ${dayOfMonth} ${months[month as keyof typeof months]} lúc ${hour}:${minute.padStart(2, '0')}`;
+    }
+  }
+  
+  // Every X minutes
+  if (minute.includes("/") && hour === "*") {
+    const interval = minute.split("/")[1];
+    return `Mỗi ${interval} phút`;
+  }
+  
+  // Every X hours
+  if (minute === "0" && hour.includes("/")) {
+    const interval = hour.split("/")[1];
+    return `Mỗi ${interval} giờ`;
+  }
+  
+  // Default fallback
+  return `Cron: ${cronExpression}`;
+};
+
 interface AccountsTableProps {
   accounts: TikTokAccount[];
   isMobile: boolean;
@@ -131,18 +214,26 @@ const AccountsTable: React.FC<AccountsTableProps> = ({
       {
         title: "Lịch chạy",
         key: "cronExpression",
-        render: (_, record) => (
-          <Tooltip title={`Chạy lần cuối: ${record.task?.lastRun ? dayjs(record.task.lastRun).format('DD/MM/YYYY HH:mm') : 'Chưa chạy'}`}>
-            <Space direction="vertical" size={0}>
-              <Text>
-                <ClockCircleOutlined /> {record.task?.cronExpression || "0 0 * * *"}
-              </Text>
-              <Tag color={record.task?.isActive ? "processing" : "default"}>
-                {record.task?.isActive ? "Đang chạy" : "Đã tắt"}
-              </Tag>
-            </Space>
-          </Tooltip>
-        ),
+        render: (_, record) => {
+          const cronExpression = record.task?.cronExpression || "0 0 * * *";
+          const humanReadable = cronToHumanReadable(cronExpression);
+          
+          return (
+            <Tooltip title={`Chạy lần cuối: ${record.task?.lastRun ? dayjs(record.task.lastRun).format('DD/MM/YYYY HH:mm') : 'Chưa chạy'}`}>
+              <Space direction="vertical" size={0}>
+                <Text>
+                  <ClockCircleOutlined /> {humanReadable}
+                </Text>
+                <Text type="secondary" style={{ fontSize: '12px' }}>
+                  ({cronExpression})
+                </Text>
+                <Tag color={record.task?.isActive ? "processing" : "default"}>
+                  {record.task?.isActive ? "Đang chạy" : "Đã tắt"}
+                </Tag>
+              </Space>
+            </Tooltip>
+          );
+        },
         responsive: ["md"],
       },
       {

@@ -64,15 +64,68 @@ const DataRetrievalCard: React.FC<DataRetrievalCardProps> = ({
   useEffect(() => {
     if (selectedAccountIds.length === 1) {
       const selectedAccount = accounts.find(acc => acc._id === selectedAccountIds[0]);
-      if (selectedAccount?.task?.isActive !== undefined) {
-        setIsTaskActive(selectedAccount.task.isActive);
+      if (selectedAccount?.task) {
+        // Cập nhật trạng thái isActive
+        setIsTaskActive(selectedAccount.task.isActive || false);
+        
+        // Cập nhật biểu thức cron từ dữ liệu của tài khoản
+        if (selectedAccount.task.cronExpression) {
+          const cronExp = selectedAccount.task.cronExpression;
+          setCronExpression(cronExp);
+          
+          try {
+            setCronDescription(cronstrue.toString(cronExp, { verbose: true, locale: "vi" }));
+          } catch {
+            setCronDescription("Biểu thức cron không hợp lệ");
+          }
+          
+          // Xác định loại tần suất dựa trên biểu thức cron
+          if (cronExp.match(/^\d+ \* \* \* \*$/)) {
+            setSelectedFrequency("hourly");
+            setCustomCron(false);
+          } else if (cronExp.match(/^\d+ \d+ \* \* \*$/)) {
+            setSelectedFrequency("daily");
+            setCustomCron(false);
+          } else if (cronExp.match(/^\d+ \d+ \* \* [0-6]$/)) {
+            setSelectedFrequency("weekly");
+            setCustomCron(false);
+            // Cập nhật form fields cho weekly
+            const parts = cronExp.split(' ');
+            form.setFieldsValue({ 
+              weekHour: parts[1],
+              weekDay: parts[4]
+            });
+          } else if (cronExp.match(/^\d+ \d+ \d+ \* \*$/)) {
+            setSelectedFrequency("monthly");
+            setCustomCron(false);
+            // Cập nhật form fields cho monthly
+            const parts = cronExp.split(' ');
+            form.setFieldsValue({ 
+              monthHour: parts[1],
+              monthDay: parts[2]
+            });
+          } else {
+            setSelectedFrequency("custom");
+            setCustomCron(true);
+          }
+        } else {
+          // Nếu không có biểu thức cron, sử dụng giá trị mặc định
+          setCronExpression("0 0 * * *");
+          setCronDescription(cronstrue.toString("0 0 * * *", { verbose: true, locale: "vi" }));
+          setSelectedFrequency("daily");
+          setCustomCron(false);
+        }
       } else {
         setIsTaskActive(false);
+        setCronExpression("0 0 * * *");
+        setCronDescription(cronstrue.toString("0 0 * * *", { verbose: true, locale: "vi" }));
+        setSelectedFrequency("daily");
+        setCustomCron(false);
       }
     } else {
       setIsTaskActive(false);
     }
-  }, [selectedAccountIds, accounts]);
+  }, [selectedAccountIds, accounts, form]);
 
   const handleFrequencyChange = (value: string) => {
     setSelectedFrequency(value);
@@ -356,7 +409,7 @@ const DataRetrievalCard: React.FC<DataRetrievalCardProps> = ({
                             style={{ width: '100%' }}
                             placeholder="Chọn phút"
                             disabled={selectedAccountIds.length === 0}
-                            defaultValue="0"
+                            value={cronExpression.split(' ')[0]}
                             onChange={(value) => {
                               const newCron = `${value} * * * *`;
                               setCronExpression(newCron);
@@ -376,7 +429,7 @@ const DataRetrievalCard: React.FC<DataRetrievalCardProps> = ({
                             style={{ width: '100%' }}
                             placeholder="Chọn giờ"
                             disabled={selectedAccountIds.length === 0}
-                            defaultValue="0"
+                            value={cronExpression.split(' ')[1]}
                             onChange={(value) => {
                               const newCron = `0 ${value} * * *`;
                               setCronExpression(newCron);
@@ -398,7 +451,7 @@ const DataRetrievalCard: React.FC<DataRetrievalCardProps> = ({
                                 style={{ width: '100%' }}
                                 placeholder="Chọn ngày"
                                 disabled={selectedAccountIds.length === 0}
-                                defaultValue="1"
+                                value={form.getFieldValue('weekDay') || cronExpression.split(' ')[4]}
                                 onChange={(value) => {
                                   const hour = form.getFieldValue('weekHour') || '0';
                                   const newCron = `0 ${hour} * * ${value}`;
@@ -423,7 +476,7 @@ const DataRetrievalCard: React.FC<DataRetrievalCardProps> = ({
                                 style={{ width: '100%' }}
                                 placeholder="Chọn giờ"
                                 disabled={selectedAccountIds.length === 0}
-                                defaultValue="0"
+                                value={form.getFieldValue('weekHour') || cronExpression.split(' ')[1]}
                                 onChange={(value) => {
                                   const day = form.getFieldValue('weekDay') || '1';
                                   const newCron = `0 ${value} * * ${day}`;
@@ -449,7 +502,7 @@ const DataRetrievalCard: React.FC<DataRetrievalCardProps> = ({
                                 style={{ width: '100%' }}
                                 placeholder="Chọn ngày"
                                 disabled={selectedAccountIds.length === 0}
-                                defaultValue="1"
+                                value={form.getFieldValue('monthDay') || cronExpression.split(' ')[2]}
                                 onChange={(value) => {
                                   const hour = form.getFieldValue('monthHour') || '0';
                                   const newCron = `0 ${hour} ${value} * *`;
@@ -470,7 +523,7 @@ const DataRetrievalCard: React.FC<DataRetrievalCardProps> = ({
                                 style={{ width: '100%' }}
                                 placeholder="Chọn giờ"
                                 disabled={selectedAccountIds.length === 0}
-                                defaultValue="0"
+                                value={form.getFieldValue('monthHour') || cronExpression.split(' ')[1]}
                                 onChange={(value) => {
                                   const day = form.getFieldValue('monthDay') || '1';
                                   const newCron = `0 ${value} ${day} * *`;
