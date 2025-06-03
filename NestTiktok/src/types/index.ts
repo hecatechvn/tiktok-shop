@@ -1,21 +1,19 @@
+import { ExtractedOrderItem } from './order';
+
 export * from './response';
 
 export type QueryParams = {
   sort_order?: string;
   sort_field?: string;
   page_token?: string;
-  app_key?: string;
-  app_secret?: string;
-  shop_cipher?: string;
-  access_token?: string;
   page_size?: number;
   order_status?: string;
-  create_time_ge?: string;
-  create_time_le?: string;
-  create_time_lt?: string;
-  update_time_ge?: string;
-  update_time_le?: string;
-  update_time_lt?: string;
+  create_time_ge?: number;
+  create_time_le?: number;
+  create_time_lt?: number;
+  update_time_ge?: number;
+  update_time_le?: number;
+  update_time_lt?: number;
   shipping_type?: string;
   buyer_user_id?: string;
   is_buyer_request_cancel?: boolean;
@@ -41,16 +39,16 @@ export type ApiResponse = {
 };
 
 export type CommonParams = {
-  appKey: string;
-  appSecret: string;
-  accessToken: string;
+  app_key: string;
+  app_secret: string;
+  access_token: string;
   sign: string;
   timestamp: number;
-  authCode: string;
-  refreshToken: string;
-  pageSize: number;
-  shopCipher: string;
-  queryParams: QueryParams;
+  auth_code: string;
+  refresh_token: string;
+  page_size: number;
+  shop_cipher: string;
+  query_params: QueryParams;
 };
 
 export type RefreshTokenResponse = {
@@ -98,4 +96,10 @@ export type ResponseRefreshToken = {
     seller_base_region: string;
     user_type: number;
   };
+};
+
+export type AllOrdersResponse = {
+  allOrders: ExtractedOrderItem[];
+  ordersByMonth: Record<number, ExtractedOrderItem[]>;
+  recentOrdersTimestamp: number;
 };

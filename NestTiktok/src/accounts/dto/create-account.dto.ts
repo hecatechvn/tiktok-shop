@@ -70,4 +70,12 @@ export class CreateAccountDto {
   @ValidateNested({ each: true })
   @Type(() => CreateShopCipherDto)
   shopCipher?: CreateShopCipherDto[];
+
+  @IsString()
+  @IsOptional()
+  shopName?: string;
+
+  @IsString()
+  @IsOptional()
+  shopId?: string;
 }

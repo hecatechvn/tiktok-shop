@@ -4,6 +4,7 @@ export const isValidBodyValue = (
   return (
     typeof value === 'string' ||
     typeof value === 'boolean' ||
+    typeof value === 'number' ||
     (Array.isArray(value) && value.every((v) => typeof v === 'string'))
   );
 };

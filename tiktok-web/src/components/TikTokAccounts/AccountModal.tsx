@@ -4,6 +4,7 @@ import {
   KeyOutlined,
   LoginOutlined,
   GlobalOutlined,
+  ShopOutlined,
 } from "@ant-design/icons";
 import { TikTokAccount } from "../../types/tikTokTypes";
 import { generateTikTokAuthUrl } from "../../utils/tiktokAuth";
@@ -41,7 +42,7 @@ const AccountModal: React.FC<AccountModalProps> = ({
   const handleAuthorize = () => {
     try {
       // Xác thực các trường form trước
-      form.validateFields(['appKey', 'appSecret', 'serviceId'])
+      form.validateFields(['appKey', 'appSecret', 'serviceId', 'shopName'])
         .then(values => {
           // Lưu dữ liệu tài khoản đang chờ xử lý vào localStorage
           const pendingAccountData = {
@@ -100,6 +101,23 @@ const AccountModal: React.FC<AccountModalProps> = ({
             name="tiktok_account_form"
             size={isMobile ? "small" : "middle"}
           >
+            <Form.Item
+              name="shopName"
+              label={
+                <span>
+                  <ShopOutlined /> Tên Shop(Sheet)
+                </span>
+              }
+              rules={[
+                {
+                  required: true,
+                  message: "Vui lòng nhập tên Shop!",
+                },
+              ]}
+            >
+              <Input placeholder="Nhập tên Shop của bạn" />
+            </Form.Item>
+            
             <Form.Item
               name="serviceId"
               label="ID Shop"

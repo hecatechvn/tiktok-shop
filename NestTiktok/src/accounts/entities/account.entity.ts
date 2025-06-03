@@ -27,7 +27,7 @@ export class ShopCipher {
 
 @Schema()
 export class Task {
-  @Prop({ required: true, default: '0 0 * * *' })
+  @Prop({ required: true, default: '0 6 * * *' })
   cronExpression: string;
 
   @Prop({ default: Date.now })
@@ -90,7 +90,13 @@ export class Account {
   task: Task;
 
   @Prop({ default: '' })
-  sheets: string;
+  sheetId: string;
+
+  @Prop({ default: '' })
+  shopName: string;
+
+  @Prop({ default: '' })
+  shopId: string;
 }
 
 export type AccountDocument = Account & Document;

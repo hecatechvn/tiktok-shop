@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { extractOrderData } from 'src/common/extractOrderData';
 import {
+  AllOrdersResponse,
   BaseResponse,
   OrdersResponse,
   RefreshTokenResponse,
@@ -9,7 +10,7 @@ import {
 } from 'src/types';
 import { GRANT_TYPE } from 'src/enum';
 import { isValidBodyValue } from 'src/lib/validBodyValue';
-import { CommonParams, RequestOption } from 'src/types';
+import { CommonParams, RequestOption, QueryParams } from 'src/types';
 import { ExtractedOrderItem, Order } from 'src/types/order';
 
 import { startOfMonth, endOfDay, setDate, format } from 'date-fns';
@@ -24,20 +25,20 @@ export class TiktokService {
   async getAccessToken<T extends BaseResponse = TokenResponse>(
     data: CommonParams,
   ): Promise<T> {
-    const { appKey, appSecret, authCode } = data;
+    const { app_key, app_secret, auth_code } = data;
     const requestOption: RequestOption = {
       uri: 'https://auth.tiktok-shops.com/api/v2/token/get',
       qs: {
-        auth_code: authCode,
-        app_secret: appSecret,
-        app_key: appKey,
+        auth_code: auth_code,
+        app_secret: app_secret,
+        app_key: app_key,
         grant_type: GRANT_TYPE.AUTHORIZED_CODE,
       },
       body: {},
     };
 
     try {
-      const response = await sendRequest<T>(requestOption, appSecret);
+      const response = await sendRequest<T>(requestOption, app_secret);
       return response;
     } catch (error) {
       console.log(error);
@@ -51,20 +52,20 @@ export class TiktokService {
   async getShopCipher<T extends BaseResponse = ShopCipherResponse>(
     data: CommonParams,
   ): Promise<T> {
-    const { appKey, appSecret, accessToken } = data;
+    const { app_key, app_secret, access_token } = data;
     const requestOption: RequestOption = {
       uri: 'https://open-api.tiktokglobalshop.com/authorization/202309/shops',
       qs: {
-        app_key: appKey,
+        app_key: app_key,
       },
       headers: {
-        'x-tts-access-token': accessToken,
+        'x-tts-access-token': access_token,
       },
       body: {},
     };
 
     try {
-      const response = await sendRequest<T>(requestOption, appSecret);
+      const response = await sendRequest<T>(requestOption, app_secret);
       return response;
     } catch (error) {
       console.log(error);
@@ -78,20 +79,20 @@ export class TiktokService {
   async refreshToken<T extends BaseResponse = RefreshTokenResponse>(
     data: CommonParams,
   ): Promise<T> {
-    const { appKey, appSecret, refreshToken } = data;
+    const { app_key, app_secret, refresh_token } = data;
     const requestOption: RequestOption = {
       uri: 'https://auth.tiktok-shops.com/api/v2/token/refresh',
       qs: {
-        refresh_token: refreshToken,
-        app_secret: appSecret,
-        app_key: appKey,
+        refresh_token: refresh_token,
+        app_secret: app_secret,
+        app_key: app_key,
         grant_type: GRANT_TYPE.REFRESH_TOKEN,
       },
       body: {},
     };
 
     try {
-      const response = await sendRequest<T>(requestOption, appSecret);
+      const response = await sendRequest<T>(requestOption, app_secret);
       return response;
     } catch (error) {
       console.log(error);
@@ -117,32 +118,32 @@ export class TiktokService {
         }
       }
 
-      const { appKey, shopCipher, accessToken, pageSize } = data;
+      const { app_key, shop_cipher, access_token, page_size } = data;
       // Thiết lập các tùy chọn request
       const requestOption: RequestOption = {
         uri: 'https://open-api.tiktokglobalshop.com/order/202309/orders/search',
         qs: {
-          app_key: appKey,
-          shop_cipher: shopCipher,
-          page_size: pageSize || 20,
+          app_key: app_key,
+          shop_cipher: shop_cipher,
+          page_size: page_size || 20,
         },
         headers: {
-          'x-tts-access-token': accessToken,
+          'x-tts-access-token': access_token,
         },
         body: {},
       };
 
       // Thêm các tham số query tùy chọn
-      if (data.queryParams.sort_order) {
-        requestOption.qs.sort_order = data.queryParams.sort_order;
+      if (data.query_params?.sort_order) {
+        requestOption.qs.sort_order = data.query_params?.sort_order;
       }
 
-      if (data.queryParams.sort_field) {
-        requestOption.qs.sort_field = data.queryParams.sort_field;
+      if (data.query_params?.sort_field) {
+        requestOption.qs.sort_field = data.query_params?.sort_field;
       }
 
-      if (data.queryParams.page_token) {
-        requestOption.qs.page_token = data.queryParams.page_token;
+      if (data.query_params?.page_token) {
+        requestOption.qs.page_token = data.query_params?.page_token;
       }
 
       // Thêm các tham số body để lọc
@@ -162,17 +163,17 @@ export class TiktokService {
 
       bodyParams.forEach((param) => {
         if (
-          data.queryParams &&
-          data.queryParams[param] !== undefined &&
-          isValidBodyValue(data.queryParams[param])
+          data.query_params &&
+          data.query_params[param] !== undefined &&
+          isValidBodyValue(data.query_params[param])
         ) {
-          requestOption.body[param] = data.queryParams[param];
+          requestOption.body[param] = data.query_params[param];
         }
       });
 
       const response = await sendRequest<OrdersResponse>(
         requestOption,
-        data.appSecret,
+        data.app_secret,
         'POST',
       );
       return response;
@@ -207,10 +208,10 @@ export class TiktokService {
       // Cập nhật tùy chọn với page_token nếu có
       const requestOptions: CommonParams = {
         ...options,
-        queryParams: {
+        query_params: {
           page_size,
-          create_time_ge: startTimestamp.toString(),
-          create_time_le: endTimestamp.toString(),
+          create_time_ge: startTimestamp,
+          create_time_le: endTimestamp,
           sort_field: 'create_time',
           sort_order: 'DESC',
         },
@@ -218,7 +219,7 @@ export class TiktokService {
 
       // Thêm page_token nếu không phải lần gọi đầu tiên
       if (nextPageToken) {
-        requestOptions.queryParams.page_token = nextPageToken;
+        requestOptions.query_params.page_token = nextPageToken;
       }
 
       const result = await this.getOrderList(requestOptions);
@@ -266,7 +267,7 @@ export class TiktokService {
   /**
    * Lấy tất cả đơn hàng từ đầu năm đến hiện tại
    */
-  async getAllOrders(options: CommonParams) {
+  async getAllOrders(options: CommonParams): Promise<AllOrdersResponse> {
     // Tính timestamp cho ngày 1 tháng 1 năm hiện tại
     const currentYear = new Date().getFullYear();
     const startDate = new Date(currentYear, 0, 1);
@@ -289,8 +290,8 @@ export class TiktokService {
     while (hasMoreRecentOrders) {
       const recentOrdersOptions: CommonParams = {
         ...options,
-        queryParams: {
-          create_time_ge: fifteenDaysAgoTimestamp.toString(),
+        query_params: {
+          create_time_ge: fifteenDaysAgoTimestamp,
           page_size: 100,
           sort_field: 'create_time',
           sort_order: 'DESC',
@@ -298,11 +299,11 @@ export class TiktokService {
       };
 
       if (pageToken) {
-        recentOrdersOptions.queryParams.page_token = pageToken;
+        recentOrdersOptions.query_params.page_token = pageToken;
       }
 
       const response = await this.getOrderList(recentOrdersOptions);
-      console.log(response);
+
       if (response.code === 0 && response.data && response.data.orders) {
         const extractedOrders = extractOrderData(response.data.orders);
         allOrders.push(...extractedOrders);
@@ -328,17 +329,19 @@ export class TiktokService {
     console.log('Đang lấy đơn hàng cũ hơn (từ đầu năm đến 15 ngày trước)...');
 
     while (hasMoreOlderOrders) {
-      const olderOrdersOptions = {
+      const olderOrdersOptions: CommonParams = {
         ...options,
-        create_time_ge: startTimestamp,
-        create_time_lt: fifteenDaysAgoTimestamp,
         page_size: 100,
-        sort_field: 'create_time',
-        sort_order: 'DESC',
+        query_params: {
+          sort_order: 'DESC',
+          sort_field: 'create_time',
+          create_time_ge: startTimestamp,
+          create_time_lt: fifteenDaysAgoTimestamp,
+        } as QueryParams,
       };
 
       if (pageToken) {
-        olderOrdersOptions.queryParams.page_token = pageToken;
+        olderOrdersOptions.query_params.page_token = pageToken;
       }
 
       const response = await this.getOrderList(olderOrdersOptions);
@@ -362,7 +365,7 @@ export class TiktokService {
     }
 
     // Phân loại đơn hàng theo tháng
-    const ordersByMonth = {};
+    const ordersByMonth: Record<number, ExtractedOrderItem[]> = {};
 
     // Khởi tạo mảng cho mỗi tháng từ 1-12
     for (let i = 1; i <= 12; i++) {
@@ -396,6 +399,7 @@ export class TiktokService {
       }
     });
 
+    console.log(ordersByMonth);
     return {
       allOrders,
       ordersByMonth,

@@ -21,7 +21,7 @@ export class UpdateAccountDto extends PartialType(CreateAccountDto) {
 
   @IsOptional()
   @IsString()
-  sheets?: string;
+  sheetId?: string;
 
   @IsOptional()
   @IsBoolean()

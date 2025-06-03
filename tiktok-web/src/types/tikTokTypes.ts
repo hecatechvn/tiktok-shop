@@ -27,7 +27,7 @@ export interface TikTokAccount {
   shopCipher?: ShopCipher[];
   status: boolean;
   task?: Task;
-  sheets?: string;
+  sheetId?: string;
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -43,7 +43,7 @@ export interface CreateAccountDto {
   appSecret: string;
   appKey: string;
   serviceId: string;
-  sheets?: string;
+  sheetId?: string;
 }
 
 export interface UpdateAccountDto {
@@ -51,7 +51,7 @@ export interface UpdateAccountDto {
   appSecret?: string;
   appKey?: string;
   serviceId?: string;
-  sheets?: string;
+  sheetId?: string;
   status?: boolean;
 }
 

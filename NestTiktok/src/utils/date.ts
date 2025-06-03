@@ -23,3 +23,10 @@ export const formatDateTimeVN = (timestamp: number): string => {
 export const toUnixTimestamp = (date: Date): number => {
   return Math.floor(date.getTime() / 1000);
 };
+
+export const getDateInIndochinaTime = () => {
+  // Lấy ngày hiện tại ở UTC
+  const utcDate = new Date();
+  // Chuyển đổi sang UTC+7 (Giờ Đông Dương)
+  return toZonedTime(utcDate, 'Asia/Bangkok');
+};

@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, forwardRef, Inject } from '@nestjs/common';
 import { TiktokService } from 'src/tiktok/tiktok.service';
 import { Account, Task, AccountDocument } from './entities/account.entity';
 import { CreateAccountDto } from './dto/create-account.dto';
@@ -10,13 +10,19 @@ import {
 } from 'src/types';
 import { InjectModel } from '@nestjs/mongoose';
 import { UpdateAccountDto } from './dto/update-account.dto';
-
+import { GoogleSheetsService } from 'src/google-sheets/google-sheets.service';
+import { TasksService } from 'src/tasks/tasks.service';
+import { ConfigService } from '@nestjs/config';
 @Injectable()
 export class AccountsService {
   constructor(
     private readonly tiktokService: TiktokService,
     @InjectModel(Account.name)
     private readonly accountModel: Model<AccountDocument>,
+    private readonly googleSheetsService: GoogleSheetsService,
+    @Inject(forwardRef(() => TasksService))
+    private readonly tasksService: TasksService,
+    private readonly configService: ConfigService,
   ) {}
 
   async create(
@@ -24,16 +30,16 @@ export class AccountsService {
   ): Promise<AccountDocument | null> {
     const { authCode, appKey, appSecret } = createAccountDto;
     const commonParams: CommonParams = {
-      appKey,
-      appSecret,
-      authCode,
-      accessToken: '',
-      refreshToken: '',
+      app_key: appKey,
+      app_secret: appSecret,
+      auth_code: authCode,
+      access_token: '',
+      refresh_token: '',
       sign: '',
       timestamp: 0,
-      pageSize: 10,
-      shopCipher: '',
-      queryParams: {},
+      page_size: 10,
+      shop_cipher: '',
+      query_params: {},
     };
 
     const getAccessToken =
@@ -50,13 +56,22 @@ export class AccountsService {
 
       const paramsGetCipher: CommonParams = {
         ...commonParams,
-        accessToken: access_token,
+        access_token: access_token,
       };
 
       const getShopCipher =
         await this.tiktokService.getShopCipher<ShopCipherResponse>(
           paramsGetCipher,
         );
+
+      // Tạo Google Sheet và chia sẻ với email người dùng nếu có
+      const userEmail =
+        this.configService.get<string>('DEFAULT_SHARE_EMAIL') ||
+        'nguyendinhtu110202@gmail.com';
+      const sheetId = await this.googleSheetsService.createSheet(
+        `Báo cáo tài khoản ${createAccountDto.shopName}`,
+        userEmail,
+      );
 
       if (getShopCipher.code === 0) {
         const { shops } = getShopCipher.data;
@@ -69,11 +84,12 @@ export class AccountsService {
           shopCipher: shops,
           status: true,
           task: {
-            cronExpression: '0 0 * * *', // Mặc định chạy lúc 0h hàng ngày
+            cronExpression: '0 6 * * *', // Mặc định chạy lúc 6h hàng ngày
             isActive: true,
             description: '',
             lastRun: new Date(),
           },
+          sheetId,
         });
         return account.save();
       }
@@ -86,11 +102,12 @@ export class AccountsService {
         refreshTokenExpireIn: refresh_token_expire_in,
         status: true,
         task: {
-          cronExpression: '0 0 * * *', // Mặc định chạy lúc 0h hàng ngày
+          cronExpression: '0 6 * * *', // Mặc định chạy lúc 6h hàng ngày
           isActive: true,
           description: '',
           lastRun: new Date(),
         },
+        sheetId,
       });
       return account.save();
     }
@@ -117,6 +134,15 @@ export class AccountsService {
   }
 
   async remove(id: string) {
+    // Xóa cronjob trước khi xóa tài khoản
+    try {
+      // Gọi phương thức xóa task từ TasksService
+      this.tasksService.deleteAccountJob(id);
+    } catch (error) {
+      console.error(`Lỗi khi xóa cronjob cho tài khoản ${id}:`, error);
+    }
+
+    // Xóa tài khoản từ database
     const account = await this.accountModel.findByIdAndDelete(id);
     return account;
   }

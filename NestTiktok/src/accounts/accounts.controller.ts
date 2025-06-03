@@ -83,7 +83,11 @@ export class AccountsController {
   }
 
   @Patch(':id/task/run')
-  updateTaskLastRun(@Param('id') id: string) {
-    return this.accountsService.updateTaskLastRun(id);
+  async updateTaskLastRun(@Param('id') id: string) {
+    const result = await this.accountsService.updateTaskLastRun(id);
+    if (result) {
+      await this.tasksService.runWriteSheetAllMonth(result);
+    }
+    return result;
   }
 }

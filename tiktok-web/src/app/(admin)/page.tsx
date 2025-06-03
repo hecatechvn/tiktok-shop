@@ -93,7 +93,7 @@ export default function TikTokAccountsPage() {
         appKey: account.appKey,
         appSecret: account.appSecret,
         serviceId: account.serviceId || "",
-        sheets: account.sheets || "",
+        sheetId: account.sheetId || "",
       });
       
       // Nếu có ID nhưng không có đầy đủ thông tin tài khoản, lấy thông tin chi tiết

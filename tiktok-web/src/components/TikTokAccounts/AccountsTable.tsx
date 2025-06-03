@@ -111,13 +111,13 @@ const AccountsTable: React.FC<AccountsTableProps> = ({
       },
       {
         title: "Google Sheet",
-        dataIndex: "sheets",
-        key: "sheets",
-        render: (link: string) =>
-          link ? (
+        dataIndex: "sheetId",
+        key: "sheetId",
+        render: (sheetId: string) =>
+          sheetId ? (
             <Button
               type="link"
-              href={link}
+              href={`https://docs.google.com/spreadsheets/d/${sheetId}`}
               target="_blank"
               icon={<FileOutlined />}
               size="small"
