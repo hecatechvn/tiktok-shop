@@ -15,8 +15,13 @@ docker build -t ${USERNAME}/nest-tiktok:latest .
 cd ..
 
 echo "📦 Building tiktok-web frontend image (Port: 3000)..."
+echo "Building with production environment variables..."
 cd tiktok-web
-docker build -t ${USERNAME}/tiktok-web:latest .
+docker build \
+  --build-arg NEXT_PUBLIC_API_URL=https://api.hct-it.vn/api/v1 \
+  --build-arg NEXTAUTH_URL=https://hct-it.vn \
+  --build-arg NEXTAUTH_SECRET=8e75b45ec20f90d57c36ffc600ec21f70ae5b298c8d13fbe86c886be1653a3da25fe1993f813f934c22150ca585863e4d6779f31b01f87506f58e057e2f1dff1ee3ba1bb32c336a4aae6be780a32711a53d9e5db21498a336118f596a3224e4bcfb00aa113794144b1dd2b1143c997a1598d6fef23a56476f0fd2695cbc5e175fec9c71b3ab654583425b1706b1c4059c7ebade14f52bb495e1a77366aec6791b6337b9b29bfb1e82aeae844a39e2e75f96e6a0371b4efeea5365e312f7200196e9e7ef1f88ab3744f86b715a5f392756fbaee490002abefee9a968531c9ffed9a721e5f9ec5261e821f2338046e8b79ef867e4cb6ec0b4e4c839a5af5f52877 \
+  -t ${USERNAME}/tiktok-web:latest .
 cd ..
 
 echo "🌐 Pushing images to Docker Hub..."
