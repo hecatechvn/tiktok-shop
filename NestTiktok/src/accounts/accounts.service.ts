@@ -71,7 +71,7 @@ export class AccountsService {
       // Tạo Google Sheet và chia sẻ với email người dùng nếu có
       const userEmail =
         this.configService.get<string>('DEFAULT_SHARE_EMAIL') ||
-        'nguyendinhtu110202@gmail.com';
+        'automation@hecatech.vn';
       const sheetId = await this.googleSheetsService.createSheet(
         `Báo cáo tài khoản ${createAccountDto.shopName}`,
         userEmail,

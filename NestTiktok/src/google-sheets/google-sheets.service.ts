@@ -307,7 +307,7 @@ export class GoogleSheetsService {
   }: {
     spreadsheetId: string;
     data: { range: string; values: any[][] }[];
-  }) {
+  }): Promise<any> {
     const sheets = await this.getSheetsClient();
     await sheets.spreadsheets.values.batchUpdate({
       spreadsheetId,
