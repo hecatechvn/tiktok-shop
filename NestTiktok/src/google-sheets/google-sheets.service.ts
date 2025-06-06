@@ -300,4 +300,21 @@ export class GoogleSheetsService {
 
     return spreadsheetId;
   }
+
+  async batchUpdateToSheet({
+    spreadsheetId,
+    data,
+  }: {
+    spreadsheetId: string;
+    data: { range: string; values: any[][] }[];
+  }) {
+    const sheets = await this.getSheetsClient();
+    await sheets.spreadsheets.values.batchUpdate({
+      spreadsheetId,
+      requestBody: {
+        valueInputOption: 'USER_ENTERED',
+        data, // Array of { range, values }
+      },
+    });
+  }
 }

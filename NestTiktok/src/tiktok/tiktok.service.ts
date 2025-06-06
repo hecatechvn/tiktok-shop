@@ -125,7 +125,7 @@ export class TiktokService {
         qs: {
           app_key: app_key,
           shop_cipher: shop_cipher,
-          page_size: page_size || 20,
+          page_size: page_size || 100,
         },
         headers: {
           'x-tts-access-token': access_token,
@@ -399,7 +399,6 @@ export class TiktokService {
       }
     });
 
-    console.log(ordersByMonth);
     return {
       allOrders,
       ordersByMonth,

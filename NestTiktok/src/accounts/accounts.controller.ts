@@ -91,6 +91,7 @@ export class AccountsController {
     if (result && body.isAllMonth) {
       await this.tasksService.runWriteSheetAllMonth(result);
     } else if (result && !body.isAllMonth) {
+      console.log('runWriteSheetCurrentMonthAndUpdatePreviousMonth');
       await this.tasksService.runWriteSheetCurrentMonthAndUpdatePreviousMonth(
         result,
       );

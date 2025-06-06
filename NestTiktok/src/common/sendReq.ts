@@ -51,6 +51,7 @@ export const sendRequest = async <T extends BaseResponse = BaseResponse>(
           : undefined,
     };
 
+    console.log(axiosConfig);
     const response = await axios(axiosConfig);
     const data = response.data as T;
 

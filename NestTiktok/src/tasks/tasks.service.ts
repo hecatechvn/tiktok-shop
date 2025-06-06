@@ -60,15 +60,22 @@ export class TasksService implements OnModuleInit {
     }
   }
 
-  // Phương thức kiểm tra và chạy thử nghiệm mỗi phút
-  @Cron('* * * * *')
-  test() {
-    this.logger.log('Đang chạy test');
-    // const accounts = await this.accountsService.findAll();
-    // for (const account of accounts) {
-    //   await this.runWriteSheetCurrentMonthAndUpdatePreviousMonth(account);
-    // }
-  }
+  // // Phương thức kiểm tra và chạy thử nghiệm mỗi phút
+  // @Cron('* * * * *')
+  // async test() {
+  //   this.logger.log('Đang chạy test');
+  //   // const account = await this.accountsService.findOne(
+  //   //   '68429f6fe44a7a2502dd6938',
+  //   // );
+
+  //   // if (!account) {
+  //   //   this.logger.error('Không tìm thấy tài khoản');
+  //   //   return;
+  //   // }
+
+  //   // await this.runWriteSheetCurrentMonthAndUpdatePreviousMonth(account);
+  //   this.logger.log('Đã chạy test');
+  // }
 
   // Phương thức đăng ký cronjob cho một tài khoản mới ngay lập tức
   async registerAccountJob(accountId: string) {
@@ -291,6 +298,258 @@ export class TasksService implements OnModuleInit {
   }
 
   // Phương thức ghi dữ liệu vào Google Sheets
+  // private async writeDataToSheet(
+  //   spreadsheetId: string,
+  //   sheetName: string,
+  //   orderData: ExtractedOrderItem[],
+  //   updateOnly: boolean = false,
+  // ) {
+  //   try {
+  //     if (!orderData || orderData.length === 0) {
+  //       console.log(`Không có dữ liệu để xử lý cho sheet: ${sheetName}`);
+  //       return;
+  //     }
+
+  //     const header = [
+  //       'Order ID',
+  //       'Order Status',
+  //       'Order Substatus',
+  //       'Cancellation Return Type',
+  //       'SKU ID',
+  //       'Product Name',
+  //       'Variation',
+  //       'Quantity',
+  //       'SKU Quantity Return',
+  //       'SKU Unit Original Price',
+  //       'SKU Subtotal Before Discount',
+  //       'SKU Platform Discount',
+  //       'SKU Seller Discount',
+  //       'SKU Subtotal After Discount',
+  //       'Shipping Fee After Discount',
+  //       'Original Shipping Fee',
+  //       'Shipping Fee Seller Discount',
+  //       'Shipping Fee Platform Discount',
+  //       'Payment Platform Discount',
+  //       'Taxes',
+  //       'Order Amount',
+  //       'Order Refund Amount',
+  //       'Created Time',
+  //       'Cancel Reason',
+  //     ];
+
+  //     const mappingOrder = orderData.map((item) => [
+  //       item.order_id || '',
+  //       item.order_status || '',
+  //       item.order_substatus || '',
+  //       item.cancellation_return_type || '',
+  //       item.sku_id || '',
+  //       item.product_name || '',
+  //       item.variation || '',
+  //       item.quantity || '',
+  //       item.sku_quantity_return || '',
+  //       item.sku_unit_original_price || '',
+  //       item.sku_subtotal_before_discount || '',
+  //       item.sku_platform_discount || '',
+  //       item.sku_seller_discount || '',
+  //       item.sku_subtotal_after_discount || '',
+  //       item.shipping_fee_after_discount || '',
+  //       item.original_shipping_fee || '',
+  //       item.shipping_fee_seller_discount || '',
+  //       item.shipping_fee_platform_discount || '',
+  //       item.payment_platform_discount || '',
+  //       item.taxes || '',
+  //       item.order_amount || '',
+  //       item.order_refund_amount || '',
+  //       item.created_time || '',
+  //       item.cancel_reason || '',
+  //     ]) as SheetValues;
+
+  //     // Kiểm tra xem sheet có tồn tại không
+  //     const checkExist = await this.googleSheetsService.sheetExists(
+  //       spreadsheetId,
+  //       sheetName,
+  //     );
+
+  //     // Kích thước batch để tránh giới hạn API của Google Sheets
+  //     const BATCH_SIZE = 50;
+  //     // Giới hạn quota: 60 write requests/phút/user
+  //     const QUOTA_LIMIT = 60;
+  //     let requestCount = 0;
+  //     let startTime = Date.now();
+
+  //     // Hàm trợ giúp để đảm bảo không vượt quá quota
+  //     const checkAndWaitForQuota = async () => {
+  //       requestCount++;
+  //       if (requestCount >= QUOTA_LIMIT) {
+  //         const elapsedMs = Date.now() - startTime;
+  //         const oneMinuteInMs = 60 * 1000;
+
+  //         // Nếu chưa đủ 1 phút, đợi thêm
+  //         if (elapsedMs < oneMinuteInMs) {
+  //           const waitTime = oneMinuteInMs - elapsedMs + 500; // Thêm 500ms để đảm bảo an toàn
+  //           console.log(
+  //             `Đã đạt giới hạn quota, đợi ${waitTime}ms trước khi tiếp tục`,
+  //           );
+  //           await new Promise((resolve) => setTimeout(resolve, waitTime));
+  //         }
+
+  //         // Reset counter và thời gian bắt đầu
+  //         requestCount = 0;
+  //         startTime = Date.now();
+  //       } else {
+  //         // Đợi một chút giữa các lần gọi API để tránh quá tải
+  //         await new Promise((resolve) => setTimeout(resolve, 100));
+  //       }
+  //     };
+
+  //     if (!checkExist) {
+  //       // Sheet không tồn tại, tạo mới sheet và thêm tất cả dữ liệu
+  //       await this.googleSheetsService.addSheet({
+  //         spreadsheetId,
+  //         sheetTitle: sheetName,
+  //       });
+  //       await checkAndWaitForQuota();
+
+  //       // Ghi header trước
+  //       await this.googleSheetsService.writeToSheet({
+  //         spreadsheetId,
+  //         range: `${sheetName}!A1`,
+  //         values: [header],
+  //       });
+  //       await checkAndWaitForQuota();
+
+  //       // Chia dữ liệu thành các batch nhỏ và ghi từng batch
+  //       for (let i = 0; i < mappingOrder.length; i += BATCH_SIZE) {
+  //         const batch = mappingOrder.slice(i, i + BATCH_SIZE);
+  //         await this.googleSheetsService.appendToSheet({
+  //           spreadsheetId,
+  //           range: `${sheetName}!A2`,
+  //           values: batch,
+  //         });
+  //         await checkAndWaitForQuota();
+
+  //         console.log(
+  //           `Đã ghi batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(mappingOrder.length / BATCH_SIZE)} cho sheet ${sheetName}`,
+  //         );
+  //       }
+  //     } else {
+  //       // Sheet đã tồn tại, đọc dữ liệu hiện có
+  //       const existingData = await this.googleSheetsService.readSheet({
+  //         spreadsheetId,
+  //         range: `${sheetName}!A:Z`,
+  //       });
+
+  //       if (existingData.length === 0 || existingData.length === 1) {
+  //         // Sheet tồn tại nhưng trống hoặc chỉ có header, thêm header nếu cần
+  //         if (existingData.length === 0) {
+  //           await this.googleSheetsService.writeToSheet({
+  //             spreadsheetId,
+  //             range: `${sheetName}!A1`,
+  //             values: [header],
+  //           });
+  //           await checkAndWaitForQuota();
+  //         }
+
+  //         // Chia dữ liệu thành các batch nhỏ và ghi từng batch
+  //         for (let i = 0; i < mappingOrder.length; i += BATCH_SIZE) {
+  //           const batch = mappingOrder.slice(i, i + BATCH_SIZE);
+  //           await this.googleSheetsService.appendToSheet({
+  //             spreadsheetId,
+  //             range: `${sheetName}!A2`,
+  //             values: batch,
+  //           });
+  //           await checkAndWaitForQuota();
+
+  //           console.log(
+  //             `Đã ghi batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(mappingOrder.length / BATCH_SIZE)} cho sheet ${sheetName}`,
+  //           );
+  //         }
+  //       } else {
+  //         // Sheet có dữ liệu, phân loại đơn hàng thành "cần cập nhật" và "cần thêm mới"
+  //         const existingOrdersMap = new Map<string, number>();
+  //         for (let i = 1; i < existingData.length; i++) {
+  //           // Bỏ qua dòng header
+  //           const row = existingData[i];
+  //           if (row && row[0]) {
+  //             // Cột đầu tiên là order_id
+  //             existingOrdersMap.set(row[0] as string, i + 1); // i + 1 là số dòng trong sheet (1-indexed)
+  //           }
+  //         }
+
+  //         interface OrderToUpdate {
+  //           rowIndex: number;
+  //           data: SheetValue[];
+  //         }
+
+  //         const ordersToUpdate: OrderToUpdate[] = [];
+  //         const ordersToAdd: SheetValue[][] = [];
+
+  //         mappingOrder.forEach((order) => {
+  //           const orderId = order[0]; // Cột đầu tiên là order_id
+  //           if (orderId && existingOrdersMap.has(orderId as string)) {
+  //             // Đơn hàng đã tồn tại, cần cập nhật
+  //             const rowIndex = existingOrdersMap.get(orderId as string)!;
+  //             ordersToUpdate.push({ rowIndex, data: order });
+  //           } else {
+  //             // Đơn hàng mới, cần thêm (chỉ thêm khi updateOnly là false)
+  //             if (!updateOnly) {
+  //               ordersToAdd.push(order);
+  //             }
+  //           }
+  //         });
+
+  //         // Cập nhật đơn hàng hiện có theo batch
+  //         if (ordersToUpdate.length > 0) {
+  //           // Sắp xếp theo chỉ số dòng cho hiệu quả
+  //           ordersToUpdate.sort((a, b) => a.rowIndex - b.rowIndex);
+
+  //           // Chia thành các batch nhỏ
+  //           for (let i = 0; i < ordersToUpdate.length; i += BATCH_SIZE) {
+  //             const batchUpdates = ordersToUpdate.slice(i, i + BATCH_SIZE);
+
+  //             // Cập nhật từng đơn hàng trong batch
+  //             for (const { rowIndex, data } of batchUpdates) {
+  //               const range = `${sheetName}!A${rowIndex}:X${rowIndex}`;
+  //               await this.googleSheetsService.writeToSheet({
+  //                 spreadsheetId,
+  //                 range,
+  //                 values: [data],
+  //               });
+  //               await checkAndWaitForQuota();
+  //             }
+
+  //             console.log(
+  //               `Đã cập nhật batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(ordersToUpdate.length / BATCH_SIZE)} cho sheet ${sheetName}`,
+  //             );
+  //           }
+  //         }
+
+  //         // Thêm đơn hàng mới theo batch (nếu có và không ở chế độ chỉ cập nhật)
+  //         if (ordersToAdd.length > 0) {
+  //           for (let i = 0; i < ordersToAdd.length; i += BATCH_SIZE) {
+  //             const batch = ordersToAdd.slice(i, i + BATCH_SIZE);
+  //             await this.googleSheetsService.appendToSheet({
+  //               spreadsheetId,
+  //               range: `${sheetName}!A:Z`,
+  //               values: batch,
+  //             });
+  //             await checkAndWaitForQuota();
+
+  //             console.log(
+  //               `Đã thêm batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(ordersToAdd.length / BATCH_SIZE)} cho sheet ${sheetName}`,
+  //             );
+  //           }
+  //         }
+  //       }
+  //     }
+
+  //     console.log(`Hoàn thành xử lý dữ liệu cho sheet: ${sheetName}`);
+  //   } catch (error) {
+  //     console.error(`Lỗi khi xử lý dữ liệu cho sheet ${sheetName}:`, error);
+  //     throw error; // Ném lại lỗi để hàm gọi xử lý
+  //   }
+  // }
+
   private async writeDataToSheet(
     spreadsheetId: string,
     sheetName: string,
@@ -357,53 +616,50 @@ export class TasksService implements OnModuleInit {
         item.cancel_reason || '',
       ]) as SheetValues;
 
-      // Kiểm tra xem sheet có tồn tại không
+      // Kiểm tra sheet có tồn tại
       const checkExist = await this.googleSheetsService.sheetExists(
         spreadsheetId,
         sheetName,
       );
 
-      // Kích thước batch để tránh giới hạn API của Google Sheets
-      const BATCH_SIZE = 50;
-      // Giới hạn quota: 60 write requests/phút/user
+      console.log('checkExist', checkExist);
+      // Quota limit + helper
       const QUOTA_LIMIT = 60;
       let requestCount = 0;
       let startTime = Date.now();
 
-      // Hàm trợ giúp để đảm bảo không vượt quá quota
       const checkAndWaitForQuota = async () => {
         requestCount++;
+        console.log(requestCount);
         if (requestCount >= QUOTA_LIMIT) {
           const elapsedMs = Date.now() - startTime;
           const oneMinuteInMs = 60 * 1000;
 
-          // Nếu chưa đủ 1 phút, đợi thêm
           if (elapsedMs < oneMinuteInMs) {
-            const waitTime = oneMinuteInMs - elapsedMs + 500; // Thêm 500ms để đảm bảo an toàn
+            const waitTime = oneMinuteInMs - elapsedMs + 500;
             console.log(
               `Đã đạt giới hạn quota, đợi ${waitTime}ms trước khi tiếp tục`,
             );
             await new Promise((resolve) => setTimeout(resolve, waitTime));
           }
 
-          // Reset counter và thời gian bắt đầu
           requestCount = 0;
           startTime = Date.now();
-        } else {
-          // Đợi một chút giữa các lần gọi API để tránh quá tải
-          await new Promise((resolve) => setTimeout(resolve, 100));
         }
       };
 
       if (!checkExist) {
-        // Sheet không tồn tại, tạo mới sheet và thêm tất cả dữ liệu
+        // Thêm mới sheet
+        console.log('Thêm mới sheet');
         await this.googleSheetsService.addSheet({
           spreadsheetId,
           sheetTitle: sheetName,
         });
+        console.log('Thêm mới sheet xong');
         await checkAndWaitForQuota();
 
-        // Ghi header trước
+        console.log('Ghi header');
+        // Ghi header
         await this.googleSheetsService.writeToSheet({
           spreadsheetId,
           range: `${sheetName}!A1`,
@@ -411,61 +667,46 @@ export class TasksService implements OnModuleInit {
         });
         await checkAndWaitForQuota();
 
-        // Chia dữ liệu thành các batch nhỏ và ghi từng batch
-        for (let i = 0; i < mappingOrder.length; i += BATCH_SIZE) {
-          const batch = mappingOrder.slice(i, i + BATCH_SIZE);
-          await this.googleSheetsService.appendToSheet({
-            spreadsheetId,
-            range: `${sheetName}!A2`,
-            values: batch,
-          });
-          await checkAndWaitForQuota();
+        // Ghi toàn bộ data 1 lần
+        await this.googleSheetsService.appendToSheet({
+          spreadsheetId,
+          range: `${sheetName}!A2`,
+          values: mappingOrder,
+        });
+        await checkAndWaitForQuota();
 
-          console.log(
-            `Đã ghi batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(mappingOrder.length / BATCH_SIZE)} cho sheet ${sheetName}`,
-          );
-        }
+        console.log(`Đã ghi toàn bộ dữ liệu cho sheet ${sheetName}`);
       } else {
-        // Sheet đã tồn tại, đọc dữ liệu hiện có
+        // Sheet đã tồn tại
         const existingData = await this.googleSheetsService.readSheet({
           spreadsheetId,
           range: `${sheetName}!A:Z`,
         });
 
-        if (existingData.length === 0 || existingData.length === 1) {
-          // Sheet tồn tại nhưng trống hoặc chỉ có header, thêm header nếu cần
-          if (existingData.length === 0) {
-            await this.googleSheetsService.writeToSheet({
-              spreadsheetId,
-              range: `${sheetName}!A1`,
-              values: [header],
-            });
-            await checkAndWaitForQuota();
-          }
+        if (existingData.length === 0) {
+          // Sheet rỗng, ghi header
+          await this.googleSheetsService.writeToSheet({
+            spreadsheetId,
+            range: `${sheetName}!A1`,
+            values: [header],
+          });
+          await checkAndWaitForQuota();
 
-          // Chia dữ liệu thành các batch nhỏ và ghi từng batch
-          for (let i = 0; i < mappingOrder.length; i += BATCH_SIZE) {
-            const batch = mappingOrder.slice(i, i + BATCH_SIZE);
-            await this.googleSheetsService.appendToSheet({
-              spreadsheetId,
-              range: `${sheetName}!A2`,
-              values: batch,
-            });
-            await checkAndWaitForQuota();
+          await this.googleSheetsService.appendToSheet({
+            spreadsheetId,
+            range: `${sheetName}!A2`,
+            values: mappingOrder,
+          });
+          await checkAndWaitForQuota();
 
-            console.log(
-              `Đã ghi batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(mappingOrder.length / BATCH_SIZE)} cho sheet ${sheetName}`,
-            );
-          }
+          console.log(`Đã ghi toàn bộ dữ liệu cho sheet ${sheetName}`);
         } else {
-          // Sheet có dữ liệu, phân loại đơn hàng thành "cần cập nhật" và "cần thêm mới"
+          // Đã có data → xử lý update hoặc thêm mới
           const existingOrdersMap = new Map<string, number>();
           for (let i = 1; i < existingData.length; i++) {
-            // Bỏ qua dòng header
             const row = existingData[i];
             if (row && row[0]) {
-              // Cột đầu tiên là order_id
-              existingOrdersMap.set(row[0] as string, i + 1); // i + 1 là số dòng trong sheet (1-indexed)
+              existingOrdersMap.set(row[0] as string, i + 1);
             }
           }
 
@@ -478,60 +719,49 @@ export class TasksService implements OnModuleInit {
           const ordersToAdd: SheetValue[][] = [];
 
           mappingOrder.forEach((order) => {
-            const orderId = order[0]; // Cột đầu tiên là order_id
+            const orderId = order[0];
             if (orderId && existingOrdersMap.has(orderId as string)) {
-              // Đơn hàng đã tồn tại, cần cập nhật
               const rowIndex = existingOrdersMap.get(orderId as string)!;
               ordersToUpdate.push({ rowIndex, data: order });
-            } else {
-              // Đơn hàng mới, cần thêm (chỉ thêm khi updateOnly là false)
-              if (!updateOnly) {
-                ordersToAdd.push(order);
-              }
+            } else if (!updateOnly) {
+              ordersToAdd.push(order);
             }
           });
 
-          // Cập nhật đơn hàng hiện có theo batch
+          // Cập nhật từng dòng (vẫn cần từng request vì update theo dòng cụ thể)
           if (ordersToUpdate.length > 0) {
-            // Sắp xếp theo chỉ số dòng cho hiệu quả
             ordersToUpdate.sort((a, b) => a.rowIndex - b.rowIndex);
 
-            // Chia thành các batch nhỏ
-            for (let i = 0; i < ordersToUpdate.length; i += BATCH_SIZE) {
-              const batchUpdates = ordersToUpdate.slice(i, i + BATCH_SIZE);
+            const dataForBatchUpdate = ordersToUpdate.map(
+              ({ rowIndex, data }) => ({
+                range: `${sheetName}!A${rowIndex}:X${rowIndex}`,
+                values: [data],
+              }),
+            );
 
-              // Cập nhật từng đơn hàng trong batch
-              for (const { rowIndex, data } of batchUpdates) {
-                const range = `${sheetName}!A${rowIndex}:X${rowIndex}`;
-                await this.googleSheetsService.writeToSheet({
-                  spreadsheetId,
-                  range,
-                  values: [data],
-                });
-                await checkAndWaitForQuota();
-              }
+            await this.googleSheetsService.batchUpdateToSheet({
+              spreadsheetId,
+              data: dataForBatchUpdate,
+            });
+            await checkAndWaitForQuota();
 
-              console.log(
-                `Đã cập nhật batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(ordersToUpdate.length / BATCH_SIZE)} cho sheet ${sheetName}`,
-              );
-            }
+            console.log(
+              `Đã cập nhật ${ordersToUpdate.length} dòng cho sheet ${sheetName} (batch update)`,
+            );
           }
 
-          // Thêm đơn hàng mới theo batch (nếu có và không ở chế độ chỉ cập nhật)
-          if (ordersToAdd.length > 0) {
-            for (let i = 0; i < ordersToAdd.length; i += BATCH_SIZE) {
-              const batch = ordersToAdd.slice(i, i + BATCH_SIZE);
-              await this.googleSheetsService.appendToSheet({
-                spreadsheetId,
-                range: `${sheetName}!A:Z`,
-                values: batch,
-              });
-              await checkAndWaitForQuota();
+          // Thêm mới toàn bộ 1 lần
+          if (!updateOnly && ordersToAdd.length > 0) {
+            await this.googleSheetsService.appendToSheet({
+              spreadsheetId,
+              range: `${sheetName}!A:Z`,
+              values: ordersToAdd,
+            });
+            await checkAndWaitForQuota();
 
-              console.log(
-                `Đã thêm batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(ordersToAdd.length / BATCH_SIZE)} cho sheet ${sheetName}`,
-              );
-            }
+            console.log(
+              `Đã thêm ${ordersToAdd.length} dòng mới cho sheet ${sheetName}`,
+            );
           }
         }
       }
@@ -539,7 +769,7 @@ export class TasksService implements OnModuleInit {
       console.log(`Hoàn thành xử lý dữ liệu cho sheet: ${sheetName}`);
     } catch (error) {
       console.error(`Lỗi khi xử lý dữ liệu cho sheet ${sheetName}:`, error);
-      throw error; // Ném lại lỗi để hàm gọi xử lý
+      throw error;
     }
   }
 

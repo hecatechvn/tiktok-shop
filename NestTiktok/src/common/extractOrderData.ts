@@ -56,7 +56,10 @@ export const extractOrderData = (orderData: Order[]): ExtractedOrderItem[] => {
           substatus === OrderStatus.COMPLETED
         ) {
           orderStatus = substatus;
-        } else if (substatus === OrderStatus.IN_TRANSIT) {
+        } else if (
+          substatus === OrderStatus.IN_TRANSIT ||
+          substatus === OrderStatus.DELIVERED
+        ) {
           orderStatus = 'Shipped';
         } else {
           orderStatus = 'To ship';
@@ -106,9 +109,13 @@ export const extractOrderData = (orderData: Order[]): ExtractedOrderItem[] => {
 
           sku_subtotal_before_discount: item.original_price, // Tổng phụ trước giảm giá
 
-          sku_platform_discount: order.payment?.platform_discount || '0', // Giảm giá từ nền tảng
-          sku_seller_discount: order.payment?.seller_discount || '0', // Giảm giá từ người bán
-          sku_subtotal_after_discount: order.payment?.sub_total, // Tổng phụ sau giảm giá
+          sku_platform_discount: item.platform_discount || '0', // Giảm giá từ nền tảng
+          sku_seller_discount: item.seller_discount || '0', // Giảm giá từ người bán
+          sku_subtotal_after_discount: (
+            parseFloat(item.original_price) -
+            parseFloat(item.seller_discount || '0') -
+            parseFloat(item.platform_discount || '0')
+          ).toString(), // Tổng phụ sau giảm giá
           shipping_fee_after_discount: order.payment?.shipping_fee || '0', // Phí vận chuyển sau giảm giá
           original_shipping_fee: order.payment?.original_shipping_fee || '0', // Phí vận chuyển gốc
           shipping_fee_seller_discount:
