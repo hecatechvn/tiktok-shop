@@ -1,0 +1,72 @@
+version: '3.8'
+
+services:
+  mongodb:
+    image: mongo:7.0
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USERNAME}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD}
+      MONGO_INITDB_DATABASE: ${MONGO_DATABASE}
+    volumes:
+      - mongodb_data:/data/db
+      - mongodb_config:/data/configdb
+    networks:
+      - traefik-net
+    # Chỉ expose port trong development, production sẽ không cần
+    # ports:
+    #   - "27017:27017"
+
+  frontend:
+    image: hecatechvn/tiktok-web:latest
+    restart: unless-stopped
+    environment:
+      - PORT=${FRONTEND_PORT}
+      - NODE_ENV=${NODE_ENV}
+      - NEXTAUTH_URL=${NEXTAUTH_URL}
+      - NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.frontend.rule=Host(`${FRONTEND_DOMAIN}`)
+      - traefik.http.routers.frontend.entrypoints=websecure
+      - traefik.http.routers.frontend.tls=true
+      - traefik.http.routers.frontend.tls.certresolver=mytlschallenge
+      - traefik.http.services.frontend.loadbalancer.server.port=${FRONTEND_PORT}
+    networks:
+      - traefik-net
+    depends_on:
+      - backend
+
+  backend:
+    image: hecatechvn/nest-tiktok:latest
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=${NODE_ENV}
+      - PORT=${BACKEND_PORT}
+      - MONGO_URI=mongodb://${MONGO_USERNAME}:${MONGO_PASSWORD}@mongodb:27017/${MONGO_DATABASE}?authSource=admin
+      - JWT_SECRET=${JWT_SECRET}
+      - JWT_ACCESS_EXPIRATION=${JWT_ACCESS_EXPIRATION}
+      - JWT_REFRESH_EXPIRATION=${JWT_REFRESH_EXPIRATION}
+      - API_PREFIX=${API_PREFIX}
+      - API_VERSION=${API_VERSION}
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.backend.rule=Host(`${BACKEND_DOMAIN}`)
+      - traefik.http.routers.backend.entrypoints=websecure
+      - traefik.http.routers.backend.tls=true
+      - traefik.http.routers.backend.tls.certresolver=mytlschallenge
+      - traefik.http.services.backend.loadbalancer.server.port=${BACKEND_PORT}
+    networks:
+      - traefik-net
+    depends_on:
+      - mongodb
+
+volumes:
+  mongodb_data:
+  mongodb_config:
+
+networks:
+  traefik-net:
+    external: true
+    name: root_default
