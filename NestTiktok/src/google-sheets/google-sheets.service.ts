@@ -343,7 +343,7 @@ export class GoogleSheetsService {
       spreadsheetId,
       requestBody: {
         requests: [
-          // 1. Căn giữa tất cả các ô
+          // 1. Căn giữa tất cả các ô và không cho text xuống hàng
           {
             repeatCell: {
               range: {
@@ -357,13 +357,14 @@ export class GoogleSheetsService {
                 userEnteredFormat: {
                   horizontalAlignment: 'CENTER',
                   verticalAlignment: 'MIDDLE',
+                  wrapStrategy: 'OVERFLOW_CELL',
                 },
               },
               fields:
-                'userEnteredFormat(horizontalAlignment,verticalAlignment)',
+                'userEnteredFormat(horizontalAlignment,verticalAlignment,wrapStrategy)',
             },
           },
-          // 2. In đậm tiêu đề (header - hàng đầu tiên)
+          // 2. Format header: In đậm, size 12, màu nền xám, padding lớn hơn
           {
             repeatCell: {
               range: {
@@ -377,18 +378,26 @@ export class GoogleSheetsService {
                 userEnteredFormat: {
                   textFormat: {
                     bold: true,
+                    fontSize: 12,
                   },
                   backgroundColor: {
                     red: 0.9,
                     green: 0.9,
                     blue: 0.9,
                   },
+                  padding: {
+                    left: 16,
+                    right: 16,
+                    top: 10,
+                    bottom: 10,
+                  },
                 },
               },
-              fields: 'userEnteredFormat(textFormat.bold,backgroundColor)',
+              fields:
+                'userEnteredFormat(textFormat.bold,textFormat.fontSize,backgroundColor,padding)',
             },
           },
-          // Đảm bảo các hàng dữ liệu KHÔNG in đậm
+          // 3. Format data rows: Không in đậm, size 10, nền trắng, padding nhỏ hơn
           {
             repeatCell: {
               range: {
@@ -402,13 +411,26 @@ export class GoogleSheetsService {
                 userEnteredFormat: {
                   textFormat: {
                     bold: false,
+                    fontSize: 10,
+                  },
+                  backgroundColor: {
+                    red: 1.0,
+                    green: 1.0,
+                    blue: 1.0,
+                  },
+                  padding: {
+                    left: 8,
+                    right: 8,
+                    top: 4,
+                    bottom: 4,
                   },
                 },
               },
-              fields: 'userEnteredFormat.textFormat.bold',
+              fields:
+                'userEnteredFormat(textFormat.bold,textFormat.fontSize,backgroundColor,padding)',
             },
           },
-          // 3. Cố định cột đầu tiên (Order ID) và header khi kéo ngang
+          // 4. Cố định cột đầu tiên (Order ID) và header khi kéo ngang
           {
             updateSheetProperties: {
               properties: {
@@ -425,7 +447,7 @@ export class GoogleSheetsService {
       },
     });
 
-    // Tự động điều chỉnh chiều rộng các cột
+    // Tự động điều chỉnh chiều rộng các cột theo nội dung lớn nhất
     await sheets.spreadsheets.batchUpdate({
       spreadsheetId,
       requestBody: {
@@ -438,63 +460,6 @@ export class GoogleSheetsService {
                 startIndex: 0,
                 endIndex: 24,
               },
-            },
-          },
-        ],
-      },
-    });
-
-    // Thiết lập chiều rộng tối đa cho mỗi cột (198px)
-    const dimensionRequests: sheets_v4.Schema$Request[] = [];
-    for (let i = 0; i < 24; i++) {
-      // Bỏ qua cột F (index 5) để giữ kích thước tự động theo nội dung
-      if (i === 5) continue;
-      dimensionRequests.push({
-        updateDimensionProperties: {
-          range: {
-            sheetId,
-            dimension: 'COLUMNS',
-            startIndex: i,
-            endIndex: i + 1,
-          },
-          properties: {
-            pixelSize: 198, // Giới hạn chiều rộng tối đa là 198px
-          },
-          fields: 'pixelSize',
-        },
-      });
-    }
-
-    // Áp dụng giới hạn chiều rộng tối đa
-    await sheets.spreadsheets.batchUpdate({
-      spreadsheetId,
-      requestBody: {
-        requests: dimensionRequests,
-      },
-    });
-
-    // cỡ chữ trừ header là 12
-    await sheets.spreadsheets.batchUpdate({
-      spreadsheetId,
-      requestBody: {
-        requests: [
-          {
-            repeatCell: {
-              range: {
-                sheetId,
-                startRowIndex: 1,
-                endRowIndex: totalRows,
-                startColumnIndex: 0,
-                endColumnIndex: 24,
-              },
-              cell: {
-                userEnteredFormat: {
-                  textFormat: {
-                    fontSize: 12,
-                  },
-                },
-              },
-              fields: 'userEnteredFormat.textFormat.fontSize',
             },
           },
         ],

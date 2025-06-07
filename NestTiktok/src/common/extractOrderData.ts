@@ -3,6 +3,19 @@ import { ExtractedOrderItem, Order } from 'src/types/order';
 import { formatDateTimeVN } from 'src/utils/date';
 
 /**
+ * Format Order ID nếu kết thúc bằng "000" thành dạng scientific notation
+ * @param orderId - Order ID gốc
+ * @returns Order ID đã format hoặc gốc
+ */
+const formatOrderId = (orderId: string): string => {
+  if (orderId.endsWith('000')) {
+    const numericId = parseFloat(orderId);
+    return numericId.toExponential(5); // Format thành dạng 5.79111E+17
+  }
+  return orderId;
+};
+
+/**
  * Trích xuất các trường dữ liệu cụ thể từ dữ liệu đơn hàng theo yêu cầu
  * @param {Order[]} orderData - Dữ liệu đơn hàng thô từ phản hồi API
  * @returns {ExtractedOrderItem[]} - Dữ liệu đơn hàng đã trích xuất với các trường theo yêu cầu
@@ -90,7 +103,7 @@ export const extractOrderData = (orderData: Order[]): ExtractedOrderItem[] => {
 
         // Trích xuất thông tin cho từng mục hàng
         const extractedItem: ExtractedOrderItem = {
-          order_id: order.id, // ID đơn hàng
+          order_id: formatOrderId(order.id), // ID đơn hàng với format
 
           order_status: orderStatus as string, // Trạng thái đơn hàng theo logic mới
           order_substatus: order.status, // Trạng thái phụ của đơn hàng
@@ -119,7 +132,7 @@ export const extractOrderData = (orderData: Order[]): ExtractedOrderItem[] => {
           shipping_fee_after_discount: order.payment?.shipping_fee || '0', // Phí vận chuyển sau giảm giá
           original_shipping_fee: order.payment?.original_shipping_fee || '0', // Phí vận chuyển gốc
           shipping_fee_seller_discount:
-            order.payment?.shipping_fee_seller_discount || '0', // Giảm giá phí vận chuyển từ người bán
+            order.payment?.shipping_fee_seller_discount || '0',
           shipping_fee_platform_discount:
             order.payment?.shipping_fee_platform_discount || '0', // Giảm giá phí vận chuyển từ nền tảng
           payment_platform_discount: order.payment?.platform_discount || '0', // Giảm giá thanh toán từ nền tảng
@@ -165,7 +178,7 @@ export const extractOrderData = (orderData: Order[]): ExtractedOrderItem[] => {
       }
 
       const extractedItem: ExtractedOrderItem = {
-        order_id: order.id,
+        order_id: formatOrderId(order.id), // ID đơn hàng với format
         order_status: orderStatus, // Trạng thái đơn hàng theo logic mới
         order_substatus: order.status,
         cancellation_initiator: order.cancellation_initiator || '',
