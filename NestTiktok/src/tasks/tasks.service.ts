@@ -425,6 +425,18 @@ export class TasksService implements OnModuleInit {
         });
         await checkAndWaitForQuota();
 
+        // Định dạng tất cả các ô căn giữa
+        const totalRows = mappingOrder.length + 1; // +1 cho header
+        await this.googleSheetsService.formatCellsCenter({
+          spreadsheetId,
+          sheetName,
+          startRowIndex: 0, // 0-based index
+          endRowIndex: totalRows,
+          startColumnIndex: 0,
+          endColumnIndex: 24, // 24 cột
+        });
+        await checkAndWaitForQuota();
+
         console.log(`Đã ghi toàn bộ dữ liệu cho sheet ${sheetName}`);
       } else {
         // Sheet đã tồn tại
@@ -449,6 +461,18 @@ export class TasksService implements OnModuleInit {
           });
           await checkAndWaitForQuota();
 
+          // Định dạng tất cả các ô căn giữa
+          const totalRows = mappingOrder.length + 1; // +1 cho header
+          await this.googleSheetsService.formatCellsCenter({
+            spreadsheetId,
+            sheetName,
+            startRowIndex: 0,
+            endRowIndex: totalRows,
+            startColumnIndex: 0,
+            endColumnIndex: 24,
+          });
+          await checkAndWaitForQuota();
+
           console.log(`Đã ghi toàn bộ dữ liệu cho sheet ${sheetName}`);
         } else {
           // Đã có data → xử lý update hoặc thêm mới
@@ -460,57 +484,78 @@ export class TasksService implements OnModuleInit {
             }
           }
 
-          interface OrderToUpdate {
-            rowIndex: number;
-            data: SheetValue[];
-          }
-
-          const ordersToUpdate: OrderToUpdate[] = [];
-          const ordersToAdd: SheetValue[][] = [];
+          // Thay đổi cách xử lý: Thay vì cập nhật tại chỗ, xóa nội dung các hàng cũ và thêm lại tất cả ở cuối
+          const orderIdsToUpdate = new Set<string>();
+          const allOrdersToAdd: SheetValue[][] = [];
 
           mappingOrder.forEach((order) => {
-            const orderId = order[0];
-            if (orderId && existingOrdersMap.has(orderId as string)) {
-              const rowIndex = existingOrdersMap.get(orderId as string)!;
-              ordersToUpdate.push({ rowIndex, data: order });
+            const orderId = order[0] as string;
+            if (orderId && existingOrdersMap.has(orderId)) {
+              // Đánh dấu các order cần cập nhật
+              orderIdsToUpdate.add(orderId);
+              if (!updateOnly) {
+                allOrdersToAdd.push(order);
+              }
             } else if (!updateOnly) {
-              ordersToAdd.push(order);
+              // Thêm các order mới
+              allOrdersToAdd.push(order);
             }
           });
 
-          // Cập nhật từng dòng (vẫn cần từng request vì update theo dòng cụ thể)
-          if (ordersToUpdate.length > 0) {
-            ordersToUpdate.sort((a, b) => a.rowIndex - b.rowIndex);
+          // Nếu có các order cần cập nhật, xóa nội dung của chúng (thay bằng các ô trống)
+          if (orderIdsToUpdate.size > 0) {
+            // Tạo danh sách các hàng cần xóa nội dung
+            const rowsToClear: { range: string; values: any[][] }[] = [];
 
-            const dataForBatchUpdate = ordersToUpdate.map(
-              ({ rowIndex, data }) => ({
-                range: `${sheetName}!A${rowIndex}:X${rowIndex}`,
-                values: [data],
-              }),
-            );
-
-            await this.googleSheetsService.batchUpdateToSheet({
-              spreadsheetId,
-              data: dataForBatchUpdate,
+            existingOrdersMap.forEach((rowIndex, orderId) => {
+              if (orderIdsToUpdate.has(orderId)) {
+                rowsToClear.push({
+                  range: `${sheetName}!A${rowIndex}:X${rowIndex}`,
+                  values: [Array(24).fill('')], // 24 cột trống
+                });
+              }
             });
-            await checkAndWaitForQuota();
 
-            console.log(
-              `Đã cập nhật ${ordersToUpdate.length} dòng cho sheet ${sheetName} (batch update)`,
-            );
+            // Xóa nội dung của các hàng cần cập nhật bằng cách ghi đè bằng giá trị trống
+            if (rowsToClear.length > 0) {
+              await this.googleSheetsService.batchUpdateToSheet({
+                spreadsheetId,
+                data: rowsToClear,
+              });
+              await checkAndWaitForQuota();
+
+              console.log(
+                `Đã xóa nội dung ${rowsToClear.length} dòng cần cập nhật từ sheet ${sheetName}`,
+              );
+            }
           }
 
-          // Thêm mới toàn bộ 1 lần
-          if (!updateOnly && ordersToAdd.length > 0) {
+          // Thêm tất cả các order vào cuối sheet
+          if (allOrdersToAdd.length > 0) {
             await this.googleSheetsService.appendToSheet({
               spreadsheetId,
               range: `${sheetName}!A:Z`,
-              values: ordersToAdd,
+              values: allOrdersToAdd,
+            });
+            await checkAndWaitForQuota();
+
+            // Định dạng các ô mới thêm vào căn giữa
+            // Tính toán chỉ số hàng bắt đầu dựa trên số lượng dữ liệu hiện có
+            const startRowIndex = existingData.length;
+            const endRowIndex = startRowIndex + allOrdersToAdd.length;
+
+            await this.googleSheetsService.formatCellsCenter({
+              spreadsheetId,
+              sheetName,
+              startRowIndex,
+              endRowIndex,
+              startColumnIndex: 0,
+              endColumnIndex: 24, // 24 cột
             });
             await checkAndWaitForQuota();
 
             console.log(
-              `Đã thêm ${ordersToAdd.length} dòng mới cho sheet ${sheetName}`,
+              `Đã thêm ${allOrdersToAdd.length} dòng vào sheet ${sheetName}`,
             );
           }
         }

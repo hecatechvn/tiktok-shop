@@ -317,4 +317,82 @@ export class GoogleSheetsService {
       },
     });
   }
+
+  /**
+   * Định dạng một phạm vi cụ thể của bảng tính với căn giữa
+   * @param spreadsheetId - ID của bảng tính
+   * @param sheetName - Tên của sheet
+   * @param startRowIndex - Chỉ số hàng bắt đầu (0-based)
+   * @param endRowIndex - Chỉ số hàng kết thúc (0-based)
+   * @param startColumnIndex - Chỉ số cột bắt đầu (0-based)
+   * @param endColumnIndex - Chỉ số cột kết thúc (0-based)
+   * @returns Promise với dữ liệu phản hồi
+   */
+  async formatCellsCenter({
+    spreadsheetId,
+    sheetName,
+    startRowIndex,
+    endRowIndex,
+    startColumnIndex,
+    endColumnIndex,
+  }: {
+    spreadsheetId: string;
+    sheetName: string;
+    startRowIndex: number;
+    endRowIndex: number;
+    startColumnIndex: number;
+    endColumnIndex: number;
+  }): Promise<any> {
+    const sheets = await this.getSheetsClient();
+
+    const request = {
+      spreadsheetId,
+      requestBody: {
+        requests: [
+          {
+            repeatCell: {
+              range: {
+                sheetId: await this.getSheetId(spreadsheetId, sheetName),
+                startRowIndex,
+                endRowIndex,
+                startColumnIndex,
+                endColumnIndex,
+              },
+              cell: {
+                userEnteredFormat: {
+                  horizontalAlignment: 'CENTER',
+                  verticalAlignment: 'MIDDLE',
+                },
+              },
+              fields: 'userEnteredFormat(horizontalAlignment,verticalAlignment)',
+            },
+          },
+        ],
+      },
+    };
+
+    return sheets.spreadsheets.batchUpdate(request);
+  }
+
+  /**
+   * Lấy sheetId từ tên sheet
+   * @param spreadsheetId - ID của bảng tính
+   * @param sheetName - Tên của sheet
+   * @returns Promise với sheetId
+   */
+  private async getSheetId(
+    spreadsheetId: string,
+    sheetName: string,
+  ): Promise<number | null> {
+    const sheets = await this.getSheetsClient();
+    const response = await sheets.spreadsheets.get({
+      spreadsheetId,
+      fields: 'sheets.properties',
+    });
+
+    const sheet = response.data.sheets?.find(
+      (s) => s.properties?.title === sheetName,
+    );
+    return sheet?.properties?.sheetId || null;
+  }
 }
