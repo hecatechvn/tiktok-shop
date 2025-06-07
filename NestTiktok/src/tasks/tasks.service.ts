@@ -14,7 +14,7 @@ import { CommonParams, ResponseRefreshToken } from 'src/types';
 import { GoogleSheetsService } from 'src/google-sheets/google-sheets.service';
 import { getDateInIndochinaTime } from 'src/utils/date';
 import { ExtractedOrderItem } from 'src/types/order';
-import { SheetValue, SheetValues } from 'src/types/google-sheets';
+import { SheetValues } from 'src/types/google-sheets';
 
 @Injectable()
 export class TasksService implements OnModuleInit {
@@ -302,7 +302,7 @@ export class TasksService implements OnModuleInit {
     spreadsheetId: string,
     sheetName: string,
     orderData: ExtractedOrderItem[],
-    updateOnly: boolean = false,
+    // updateOnly: boolean = false,
   ) {
     try {
       if (!orderData || orderData.length === 0) {
@@ -425,16 +425,13 @@ export class TasksService implements OnModuleInit {
         });
         await checkAndWaitForQuota();
 
-        // Định dạng tất cả các ô căn giữa
+        // Áp dụng định dạng hoàn chỉnh cho bảng
         const totalRows = mappingOrder.length + 1; // +1 cho header
-        await this.googleSheetsService.formatCellsCenter({
+        await this.googleSheetsService.formatCompleteTable(
           spreadsheetId,
           sheetName,
-          startRowIndex: 0, // 0-based index
-          endRowIndex: totalRows,
-          startColumnIndex: 0,
-          endColumnIndex: 24, // 24 cột
-        });
+          totalRows,
+        );
         await checkAndWaitForQuota();
 
         console.log(`Đã ghi toàn bộ dữ liệu cho sheet ${sheetName}`);
@@ -461,103 +458,47 @@ export class TasksService implements OnModuleInit {
           });
           await checkAndWaitForQuota();
 
-          // Định dạng tất cả các ô căn giữa
+          // Áp dụng định dạng hoàn chỉnh cho bảng
           const totalRows = mappingOrder.length + 1; // +1 cho header
-          await this.googleSheetsService.formatCellsCenter({
+          await this.googleSheetsService.formatCompleteTable(
             spreadsheetId,
             sheetName,
-            startRowIndex: 0,
-            endRowIndex: totalRows,
-            startColumnIndex: 0,
-            endColumnIndex: 24,
-          });
+            totalRows,
+          );
           await checkAndWaitForQuota();
 
           console.log(`Đã ghi toàn bộ dữ liệu cho sheet ${sheetName}`);
         } else {
-          // Đã có data → xử lý update hoặc thêm mới
-          const existingOrdersMap = new Map<string, number>();
-          for (let i = 1; i < existingData.length; i++) {
-            const row = existingData[i];
-            if (row && row[0]) {
-              existingOrdersMap.set(row[0] as string, i + 1);
-            }
-          }
+          // Đã có data → xóa hết dữ liệu cũ (trừ header) và thêm lại dữ liệu mới
 
-          // Thay đổi cách xử lý: Thay vì cập nhật tại chỗ, xóa nội dung các hàng cũ và thêm lại tất cả ở cuối
-          const orderIdsToUpdate = new Set<string>();
-          const allOrdersToAdd: SheetValue[][] = [];
+          // Xóa tất cả dữ liệu cũ trừ hàng header
+          await this.googleSheetsService.clearSheetData(
+            spreadsheetId,
+            sheetName,
+          );
+          await checkAndWaitForQuota();
+          console.log(`Đã xóa tất cả dữ liệu cũ của sheet ${sheetName}`);
 
-          mappingOrder.forEach((order) => {
-            const orderId = order[0] as string;
-            if (orderId && existingOrdersMap.has(orderId)) {
-              // Đánh dấu các order cần cập nhật
-              orderIdsToUpdate.add(orderId);
-              if (!updateOnly) {
-                allOrdersToAdd.push(order);
-              }
-            } else if (!updateOnly) {
-              // Thêm các order mới
-              allOrdersToAdd.push(order);
-            }
+          // Thêm tất cả dữ liệu mới vào sheet
+          await this.googleSheetsService.appendToSheet({
+            spreadsheetId,
+            range: `${sheetName}!A2`,
+            values: mappingOrder,
           });
+          await checkAndWaitForQuota();
 
-          // Nếu có các order cần cập nhật, xóa nội dung của chúng (thay bằng các ô trống)
-          if (orderIdsToUpdate.size > 0) {
-            // Tạo danh sách các hàng cần xóa nội dung
-            const rowsToClear: { range: string; values: any[][] }[] = [];
+          // Áp dụng định dạng hoàn chỉnh cho bảng
+          const totalRows = mappingOrder.length + 1; // +1 cho header
+          await this.googleSheetsService.formatCompleteTable(
+            spreadsheetId,
+            sheetName,
+            totalRows,
+          );
+          await checkAndWaitForQuota();
 
-            existingOrdersMap.forEach((rowIndex, orderId) => {
-              if (orderIdsToUpdate.has(orderId)) {
-                rowsToClear.push({
-                  range: `${sheetName}!A${rowIndex}:X${rowIndex}`,
-                  values: [Array(24).fill('')], // 24 cột trống
-                });
-              }
-            });
-
-            // Xóa nội dung của các hàng cần cập nhật bằng cách ghi đè bằng giá trị trống
-            if (rowsToClear.length > 0) {
-              await this.googleSheetsService.batchUpdateToSheet({
-                spreadsheetId,
-                data: rowsToClear,
-              });
-              await checkAndWaitForQuota();
-
-              console.log(
-                `Đã xóa nội dung ${rowsToClear.length} dòng cần cập nhật từ sheet ${sheetName}`,
-              );
-            }
-          }
-
-          // Thêm tất cả các order vào cuối sheet
-          if (allOrdersToAdd.length > 0) {
-            await this.googleSheetsService.appendToSheet({
-              spreadsheetId,
-              range: `${sheetName}!A:Z`,
-              values: allOrdersToAdd,
-            });
-            await checkAndWaitForQuota();
-
-            // Định dạng các ô mới thêm vào căn giữa
-            // Tính toán chỉ số hàng bắt đầu dựa trên số lượng dữ liệu hiện có
-            const startRowIndex = existingData.length;
-            const endRowIndex = startRowIndex + allOrdersToAdd.length;
-
-            await this.googleSheetsService.formatCellsCenter({
-              spreadsheetId,
-              sheetName,
-              startRowIndex,
-              endRowIndex,
-              startColumnIndex: 0,
-              endColumnIndex: 24, // 24 cột
-            });
-            await checkAndWaitForQuota();
-
-            console.log(
-              `Đã thêm ${allOrdersToAdd.length} dòng vào sheet ${sheetName}`,
-            );
-          }
+          console.log(
+            `Đã thêm ${mappingOrder.length} dòng mới vào sheet ${sheetName}`,
+          );
         }
       }
 
@@ -668,7 +609,7 @@ export class TasksService implements OnModuleInit {
         account.sheetId,
         previousSheetName,
         dataPreviousMonthFiltered,
-        true,
+        // true,
       );
     }
   }
@@ -788,7 +729,7 @@ export class TasksService implements OnModuleInit {
     // Lấy tháng hiện tại để xử lý đặc biệt
     const currentDate = getDateInIndochinaTime();
     const currentYear = currentDate.getFullYear();
-    const currentMonth = currentDate.getMonth();
+    // const currentMonth = currentDate.getMonth();
 
     const { ordersByMonth } = result;
 
@@ -807,7 +748,6 @@ export class TasksService implements OnModuleInit {
 
       try {
         // Sử dụng hàm writeDataToSheet để xử lý dữ liệu
-        const isCurrentMonth = parseInt(month) === currentMonth + 1;
 
         // Nếu là tháng hiện tại, cho phép thêm đơn hàng mới (updateOnly = false)
         // Nếu không phải tháng hiện tại, chỉ cập nhật đơn hàng hiện có (updateOnly = true)
@@ -815,7 +755,6 @@ export class TasksService implements OnModuleInit {
           account.sheetId,
           sheetNameForMonth,
           monthData,
-          !isCurrentMonth,
         );
       } catch (error) {
         console.error(`Lỗi khi xử lý dữ liệu tháng ${month}:`, error);

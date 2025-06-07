@@ -319,44 +319,39 @@ export class GoogleSheetsService {
   }
 
   /**
-   * Định dạng một phạm vi cụ thể của bảng tính với căn giữa
+   * Định dạng bảng hoàn chỉnh: căn giữa, cột ID cố định, header in đậm, auto-resize, và giới hạn chiều rộng tối đa
    * @param spreadsheetId - ID của bảng tính
    * @param sheetName - Tên của sheet
-   * @param startRowIndex - Chỉ số hàng bắt đầu (0-based)
-   * @param endRowIndex - Chỉ số hàng kết thúc (0-based)
-   * @param startColumnIndex - Chỉ số cột bắt đầu (0-based)
-   * @param endColumnIndex - Chỉ số cột kết thúc (0-based)
-   * @returns Promise với dữ liệu phản hồi
+   * @param totalRows - Tổng số hàng
+   * @returns Promise hoàn thành khi việc định dạng hoàn tất
    */
-  async formatCellsCenter({
-    spreadsheetId,
-    sheetName,
-    startRowIndex,
-    endRowIndex,
-    startColumnIndex,
-    endColumnIndex,
-  }: {
-    spreadsheetId: string;
-    sheetName: string;
-    startRowIndex: number;
-    endRowIndex: number;
-    startColumnIndex: number;
-    endColumnIndex: number;
-  }): Promise<any> {
+  async formatCompleteTable(
+    spreadsheetId: string,
+    sheetName: string,
+    totalRows: number,
+  ): Promise<any> {
     const sheets = await this.getSheetsClient();
+    const sheetId = await this.getSheetId(spreadsheetId, sheetName);
 
-    const request = {
+    if (sheetId === null) {
+      this.logger.error(`Sheet ID không tìm thấy cho sheet ${sheetName}`);
+      return;
+    }
+
+    // Thực hiện các định dạng cơ bản
+    await sheets.spreadsheets.batchUpdate({
       spreadsheetId,
       requestBody: {
         requests: [
+          // 1. Căn giữa tất cả các ô
           {
             repeatCell: {
               range: {
-                sheetId: await this.getSheetId(spreadsheetId, sheetName),
-                startRowIndex,
-                endRowIndex,
-                startColumnIndex,
-                endColumnIndex,
+                sheetId,
+                startRowIndex: 0,
+                endRowIndex: totalRows,
+                startColumnIndex: 0,
+                endColumnIndex: 24,
               },
               cell: {
                 userEnteredFormat: {
@@ -364,14 +359,150 @@ export class GoogleSheetsService {
                   verticalAlignment: 'MIDDLE',
                 },
               },
-              fields: 'userEnteredFormat(horizontalAlignment,verticalAlignment)',
+              fields:
+                'userEnteredFormat(horizontalAlignment,verticalAlignment)',
+            },
+          },
+          // 2. In đậm tiêu đề (header - hàng đầu tiên)
+          {
+            repeatCell: {
+              range: {
+                sheetId,
+                startRowIndex: 0,
+                endRowIndex: 1,
+                startColumnIndex: 0,
+                endColumnIndex: 24,
+              },
+              cell: {
+                userEnteredFormat: {
+                  textFormat: {
+                    bold: true,
+                  },
+                  backgroundColor: {
+                    red: 0.9,
+                    green: 0.9,
+                    blue: 0.9,
+                  },
+                },
+              },
+              fields: 'userEnteredFormat(textFormat.bold,backgroundColor)',
+            },
+          },
+          // Đảm bảo các hàng dữ liệu KHÔNG in đậm
+          {
+            repeatCell: {
+              range: {
+                sheetId,
+                startRowIndex: 1,
+                endRowIndex: totalRows,
+                startColumnIndex: 0,
+                endColumnIndex: 24,
+              },
+              cell: {
+                userEnteredFormat: {
+                  textFormat: {
+                    bold: false,
+                  },
+                },
+              },
+              fields: 'userEnteredFormat.textFormat.bold',
+            },
+          },
+          // 3. Cố định cột đầu tiên (Order ID) và header khi kéo ngang
+          {
+            updateSheetProperties: {
+              properties: {
+                sheetId,
+                gridProperties: {
+                  frozenColumnCount: 1,
+                  frozenRowCount: 1,
+                },
+              },
+              fields: 'gridProperties(frozenColumnCount,frozenRowCount)',
             },
           },
         ],
       },
-    };
+    });
 
-    return sheets.spreadsheets.batchUpdate(request);
+    // Tự động điều chỉnh chiều rộng các cột
+    await sheets.spreadsheets.batchUpdate({
+      spreadsheetId,
+      requestBody: {
+        requests: [
+          {
+            autoResizeDimensions: {
+              dimensions: {
+                sheetId,
+                dimension: 'COLUMNS',
+                startIndex: 0,
+                endIndex: 24,
+              },
+            },
+          },
+        ],
+      },
+    });
+
+    // Thiết lập chiều rộng tối đa cho mỗi cột (198px)
+    const dimensionRequests: sheets_v4.Schema$Request[] = [];
+    for (let i = 0; i < 24; i++) {
+      // Bỏ qua cột F (index 5) để giữ kích thước tự động theo nội dung
+      if (i === 5) continue;
+      dimensionRequests.push({
+        updateDimensionProperties: {
+          range: {
+            sheetId,
+            dimension: 'COLUMNS',
+            startIndex: i,
+            endIndex: i + 1,
+          },
+          properties: {
+            pixelSize: 198, // Giới hạn chiều rộng tối đa là 198px
+          },
+          fields: 'pixelSize',
+        },
+      });
+    }
+
+    // Áp dụng giới hạn chiều rộng tối đa
+    await sheets.spreadsheets.batchUpdate({
+      spreadsheetId,
+      requestBody: {
+        requests: dimensionRequests,
+      },
+    });
+
+    // cỡ chữ trừ header là 12
+    await sheets.spreadsheets.batchUpdate({
+      spreadsheetId,
+      requestBody: {
+        requests: [
+          {
+            repeatCell: {
+              range: {
+                sheetId,
+                startRowIndex: 1,
+                endRowIndex: totalRows,
+                startColumnIndex: 0,
+                endColumnIndex: 24,
+              },
+              cell: {
+                userEnteredFormat: {
+                  textFormat: {
+                    fontSize: 12,
+                  },
+                },
+              },
+              fields: 'userEnteredFormat.textFormat.fontSize',
+            },
+          },
+        ],
+      },
+    });
+
+    this.logger.log(`Đã áp dụng định dạng hoàn chỉnh cho sheet ${sheetName}`);
+    return true;
   }
 
   /**
@@ -394,5 +525,35 @@ export class GoogleSheetsService {
       (s) => s.properties?.title === sheetName,
     );
     return sheet?.properties?.sheetId || null;
+  }
+
+  /**
+   * Xóa tất cả dữ liệu trong sheet trừ hàng header
+   * @param spreadsheetId - ID của bảng tính
+   * @param sheetName - Tên của sheet
+   * @returns Promise hoàn thành khi việc xóa hoàn tất
+   */
+  async clearSheetData(spreadsheetId: string, sheetName: string): Promise<any> {
+    const sheets = await this.getSheetsClient();
+
+    // Đọc dữ liệu để xác định số lượng hàng
+    const data = await this.readSheet({
+      spreadsheetId,
+      range: `${sheetName}!A:Z`,
+    });
+
+    // Nếu sheet trống hoặc chỉ có header
+    if (data.length <= 1) {
+      this.logger.log(
+        `Sheet ${sheetName} is empty or has only header. No need to clear.`,
+      );
+      return;
+    }
+
+    // Xóa tất cả dữ liệu từ hàng 2 trở đi (giữ lại header)
+    return sheets.spreadsheets.values.clear({
+      spreadsheetId,
+      range: `${sheetName}!A2:Z${data.length}`,
+    });
   }
 }
