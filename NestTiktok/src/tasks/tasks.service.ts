@@ -338,11 +338,11 @@ export class TasksService implements OnModuleInit {
       ];
 
       // Sắp xếp dữ liệu theo ngày tạo (created_time) trước khi mapping
-      orderData.sort((a, b) => {
-        const dateA = a.created_time ? new Date(a.created_time).getTime() : 0;
-        const dateB = b.created_time ? new Date(b.created_time).getTime() : 0;
-        return dateA - dateB; // Sắp xếp tăng dần theo ngày (cũ đến mới)
-      });
+      // orderData.sort((a, b) => {
+      //   const dateA = a.created_time ? new Date(a.created_time).getTime() : 0;
+      //   const dateB = b.created_time ? new Date(b.created_time).getTime() : 0;
+      //   return dateA - dateB; // Sắp xếp tăng dần theo ngày (cũ đến mới)
+      // });
 
       const mappingOrder = orderData.map((item) => [
         item.order_id || '',
@@ -377,7 +377,6 @@ export class TasksService implements OnModuleInit {
         sheetName,
       );
 
-      console.log('checkExist', checkExist);
       // Quota limit + helper
       const QUOTA_LIMIT = 60;
       let requestCount = 0;
@@ -385,7 +384,6 @@ export class TasksService implements OnModuleInit {
 
       const checkAndWaitForQuota = async () => {
         requestCount++;
-        console.log(requestCount);
         if (requestCount >= QUOTA_LIMIT) {
           const elapsedMs = Date.now() - startTime;
           const oneMinuteInMs = 60 * 1000;
@@ -405,15 +403,12 @@ export class TasksService implements OnModuleInit {
 
       if (!checkExist) {
         // Thêm mới sheet
-        console.log('Thêm mới sheet');
         await this.googleSheetsService.addSheet({
           spreadsheetId,
           sheetTitle: sheetName,
         });
-        console.log('Thêm mới sheet xong');
         await checkAndWaitForQuota();
 
-        console.log('Ghi header');
         // Ghi header
         await this.googleSheetsService.writeToSheet({
           spreadsheetId,
@@ -600,6 +595,23 @@ export class TasksService implements OnModuleInit {
         currentDate,
       );
 
+      const getMonth =
+        currentDate.getMonth() === 0 ? 11 : currentDate.getMonth() - 1;
+
+      const dataPreviousMonthFiltered = dataPreviousMonth.filter((order) => {
+        if (!order.created_time) return false;
+
+        // Xử lý định dạng DD/MM/YYYY
+        const dateParts = order.created_time.split('/');
+        if (dateParts.length !== 3) return false;
+
+        // Chuyển từ DD/MM/YYYY sang MM/DD/YYYY để JavaScript parse đúng
+        const month = parseInt(dateParts[1], 10) - 1; // Tháng trong JS là 0-11
+
+        // Kiểm tra tháng có phải là tháng trước không
+        return month === getMonth;
+      });
+
       // Lấy tên tháng của ngày 15 ngày trước
       const previousMonth = date15DaysAgo.getMonth();
       const previousYear = date15DaysAgo.getFullYear();
@@ -610,7 +622,7 @@ export class TasksService implements OnModuleInit {
       await this.writeDataToSheet(
         account.sheetId,
         previousSheetName,
-        dataPreviousMonth,
+        dataPreviousMonthFiltered,
         true,
       );
     }

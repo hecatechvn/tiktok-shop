@@ -213,7 +213,7 @@ export class TiktokService {
           create_time_ge: startTimestamp,
           create_time_le: endTimestamp,
           sort_field: 'create_time',
-          sort_order: 'DESC',
+          sort_order: 'ASC',
         },
       };
 
