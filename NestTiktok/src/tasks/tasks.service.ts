@@ -417,6 +417,16 @@ export class TasksService implements OnModuleInit {
         });
         await checkAndWaitForQuota();
 
+        // Chuẩn bị định dạng cho vùng dữ liệu trước khi thêm dữ liệu mới
+        await this.googleSheetsService.prepareDataArea(
+          spreadsheetId,
+          sheetName,
+          1, // Bắt đầu từ dòng 1 (sau header)
+          mappingOrder.length + 100, // Dự phòng thêm 100 dòng
+        );
+        await checkAndWaitForQuota();
+        console.log(`Đã chuẩn bị định dạng cho vùng dữ liệu ${sheetName}`);
+
         // Ghi toàn bộ data 1 lần
         await this.googleSheetsService.appendToSheet({
           spreadsheetId,
@@ -425,7 +435,7 @@ export class TasksService implements OnModuleInit {
         });
         await checkAndWaitForQuota();
 
-        // Áp dụng định dạng hoàn chỉnh cho bảng
+        // Áp dụng định dạng hoàn chỉnh cho bảng sau khi thêm dữ liệu
         const totalRows = mappingOrder.length + 1; // +1 cho header
         await this.googleSheetsService.formatCompleteTable(
           spreadsheetId,
@@ -451,6 +461,16 @@ export class TasksService implements OnModuleInit {
           });
           await checkAndWaitForQuota();
 
+          // Chuẩn bị định dạng cho vùng dữ liệu trước khi thêm dữ liệu mới
+          await this.googleSheetsService.prepareDataArea(
+            spreadsheetId,
+            sheetName,
+            1, // Bắt đầu từ dòng 1 (sau header)
+            mappingOrder.length + 100, // Dự phòng thêm 100 dòng
+          );
+          await checkAndWaitForQuota();
+          console.log(`Đã chuẩn bị định dạng cho vùng dữ liệu ${sheetName}`);
+
           await this.googleSheetsService.appendToSheet({
             spreadsheetId,
             range: `${sheetName}!A2`,
@@ -458,7 +478,7 @@ export class TasksService implements OnModuleInit {
           });
           await checkAndWaitForQuota();
 
-          // Áp dụng định dạng hoàn chỉnh cho bảng
+          // Áp dụng định dạng hoàn chỉnh cho bảng sau khi thêm dữ liệu
           const totalRows = mappingOrder.length + 1; // +1 cho header
           await this.googleSheetsService.formatCompleteTable(
             spreadsheetId,
@@ -479,6 +499,17 @@ export class TasksService implements OnModuleInit {
           await checkAndWaitForQuota();
           console.log(`Đã xóa tất cả dữ liệu cũ của sheet ${sheetName}`);
 
+          // Chuẩn bị định dạng cho vùng dữ liệu trước khi thêm dữ liệu mới
+          // Số dòng là số dòng dữ liệu + 100 dòng buffer để đảm bảo bao phủ đủ
+          await this.googleSheetsService.prepareDataArea(
+            spreadsheetId,
+            sheetName,
+            1, // Bắt đầu từ dòng 1 (sau header)
+            mappingOrder.length + 100, // Dự phòng thêm 100 dòng
+          );
+          await checkAndWaitForQuota();
+          console.log(`Đã chuẩn bị định dạng cho vùng dữ liệu ${sheetName}`);
+
           // Thêm tất cả dữ liệu mới vào sheet
           await this.googleSheetsService.appendToSheet({
             spreadsheetId,
@@ -487,7 +518,7 @@ export class TasksService implements OnModuleInit {
           });
           await checkAndWaitForQuota();
 
-          // Áp dụng định dạng hoàn chỉnh cho bảng
+          // Áp dụng định dạng hoàn chỉnh cho bảng ngay sau khi thêm dữ liệu
           const totalRows = mappingOrder.length + 1; // +1 cho header
           await this.googleSheetsService.formatCompleteTable(
             spreadsheetId,

@@ -85,7 +85,7 @@ export class GoogleSheetsService {
     const res = await sheets.spreadsheets.values.update({
       spreadsheetId,
       range,
-      valueInputOption: 'RAW',
+      valueInputOption: 'USER_ENTERED',
       requestBody: { values },
     });
 
@@ -109,7 +109,7 @@ export class GoogleSheetsService {
     const res = await sheets.spreadsheets.values.append({
       spreadsheetId,
       range,
-      valueInputOption: 'RAW',
+      valueInputOption: 'USER_ENTERED',
       insertDataOption: 'INSERT_ROWS',
       requestBody: { values },
     });
@@ -207,7 +207,7 @@ export class GoogleSheetsService {
   async shareSheet(
     spreadsheetId: string,
     email: string,
-    role: 'writer' | 'reader' = 'writer',
+    role: 'writer' | 'reader' = 'reader',
   ): Promise<void> {
     try {
       const drive = await this.getDriveClient();
@@ -319,7 +319,7 @@ export class GoogleSheetsService {
   }
 
   /**
-   * Định dạng bảng hoàn chỉnh: căn giữa, cột ID cố định, header in đậm, auto-resize, và giới hạn chiều rộng tối đa
+   * Định dạng bảng: chỉ header in đậm, các dữ liệu khác bình thường
    * @param spreadsheetId - ID của bảng tính
    * @param sheetName - Tên của sheet
    * @param totalRows - Tổng số hàng
@@ -338,12 +338,12 @@ export class GoogleSheetsService {
       return;
     }
 
-    // Thực hiện các định dạng cơ bản
+    // Bước 1: Đầu tiên định dạng TẤT CẢ các ô với định dạng cơ bản (không in đậm, nền trắng)
     await sheets.spreadsheets.batchUpdate({
       spreadsheetId,
       requestBody: {
         requests: [
-          // 1. Căn giữa tất cả các ô và không cho text xuống hàng
+          // Định dạng cơ bản cho tất cả các ô (bao gồm cả header)
           {
             repeatCell: {
               range: {
@@ -358,13 +358,31 @@ export class GoogleSheetsService {
                   horizontalAlignment: 'CENTER',
                   verticalAlignment: 'MIDDLE',
                   wrapStrategy: 'OVERFLOW_CELL',
+                  backgroundColor: {
+                    red: 1,
+                    green: 1,
+                    blue: 1,
+                  },
+                  textFormat: {
+                    bold: false,
+                    fontSize: 10,
+                  },
                 },
               },
               fields:
-                'userEnteredFormat(horizontalAlignment,verticalAlignment,wrapStrategy)',
+                'userEnteredFormat.horizontalAlignment,userEnteredFormat.verticalAlignment,userEnteredFormat.wrapStrategy,userEnteredFormat.backgroundColor,userEnteredFormat.textFormat',
             },
           },
-          // 2. Format header: In đậm, size 12, màu nền xám, padding lớn hơn
+        ],
+      },
+    });
+
+    // Bước 2: Sau đó mới định dạng riêng cho header
+    await sheets.spreadsheets.batchUpdate({
+      spreadsheetId,
+      requestBody: {
+        requests: [
+          // Định dạng đặc biệt cho header
           {
             repeatCell: {
               range: {
@@ -376,61 +394,22 @@ export class GoogleSheetsService {
               },
               cell: {
                 userEnteredFormat: {
-                  textFormat: {
-                    bold: true,
-                    fontSize: 12,
-                  },
                   backgroundColor: {
                     red: 0.9,
                     green: 0.9,
                     blue: 0.9,
                   },
-                  padding: {
-                    left: 16,
-                    right: 16,
-                    top: 10,
-                    bottom: 10,
-                  },
-                },
-              },
-              fields:
-                'userEnteredFormat(textFormat.bold,textFormat.fontSize,backgroundColor,padding)',
-            },
-          },
-          // 3. Format data rows: Không in đậm, size 10, nền trắng, padding nhỏ hơn
-          {
-            repeatCell: {
-              range: {
-                sheetId,
-                startRowIndex: 1,
-                endRowIndex: totalRows,
-                startColumnIndex: 0,
-                endColumnIndex: 24,
-              },
-              cell: {
-                userEnteredFormat: {
                   textFormat: {
-                    bold: false,
-                    fontSize: 10,
-                  },
-                  backgroundColor: {
-                    red: 1.0,
-                    green: 1.0,
-                    blue: 1.0,
-                  },
-                  padding: {
-                    left: 8,
-                    right: 8,
-                    top: 4,
-                    bottom: 4,
+                    bold: true,
+                    fontSize: 12,
                   },
                 },
               },
               fields:
-                'userEnteredFormat(textFormat.bold,textFormat.fontSize,backgroundColor,padding)',
+                'userEnteredFormat.backgroundColor,userEnteredFormat.textFormat',
             },
           },
-          // 4. Cố định cột đầu tiên (Order ID) và header khi kéo ngang
+          // Cố định cột đầu tiên và header
           {
             updateSheetProperties: {
               properties: {
@@ -440,14 +419,15 @@ export class GoogleSheetsService {
                   frozenRowCount: 1,
                 },
               },
-              fields: 'gridProperties(frozenColumnCount,frozenRowCount)',
+              fields:
+                'gridProperties.frozenColumnCount,gridProperties.frozenRowCount',
             },
           },
         ],
       },
     });
 
-    // Tự động điều chỉnh chiều rộng các cột theo nội dung lớn nhất
+    // Tự động điều chỉnh chiều rộng các cột
     await sheets.spreadsheets.batchUpdate({
       spreadsheetId,
       requestBody: {
@@ -466,7 +446,9 @@ export class GoogleSheetsService {
       },
     });
 
-    this.logger.log(`Đã áp dụng định dạng hoàn chỉnh cho sheet ${sheetName}`);
+    this.logger.log(
+      `Đã áp dụng định dạng cho sheet ${sheetName} - header màu xám, nội dung màu trắng, với kích thước phù hợp`,
+    );
     return true;
   }
 
@@ -520,5 +502,110 @@ export class GoogleSheetsService {
       spreadsheetId,
       range: `${sheetName}!A2:Z${data.length}`,
     });
+  }
+
+  /**
+   * Chuẩn bị định dạng cho vùng dữ liệu trước khi thêm dữ liệu mới
+   * @param spreadsheetId - ID của bảng tính
+   * @param sheetName - Tên của sheet
+   * @param startRow - Dòng bắt đầu (thường là 1 - sau header)
+   * @param numRows - Số dòng cần chuẩn bị
+   * @returns Promise hoàn thành khi việc định dạng hoàn tất
+   */
+  async prepareDataArea(
+    spreadsheetId: string,
+    sheetName: string,
+    startRow: number,
+    numRows: number,
+  ): Promise<any> {
+    const sheets = await this.getSheetsClient();
+    const sheetId = await this.getSheetId(spreadsheetId, sheetName);
+
+    if (sheetId === null) {
+      this.logger.error(`Sheet ID không tìm thấy cho sheet ${sheetName}`);
+      return;
+    }
+
+    const endRow = startRow + numRows;
+
+    // Thiết lập định dạng cho vùng dữ liệu (không in đậm, nền trắng, cỡ chữ 10)
+    // Sử dụng userEnteredFormat thay vì các trường riêng lẻ
+    await sheets.spreadsheets.batchUpdate({
+      spreadsheetId,
+      requestBody: {
+        requests: [
+          {
+            repeatCell: {
+              range: {
+                sheetId,
+                startRowIndex: startRow,
+                endRowIndex: endRow,
+                startColumnIndex: 0,
+                endColumnIndex: 24,
+              },
+              cell: {
+                userEnteredFormat: {
+                  textFormat: {
+                    bold: false,
+                    fontSize: 10,
+                  },
+                  backgroundColor: {
+                    red: 1,
+                    green: 1,
+                    blue: 1,
+                  },
+                  horizontalAlignment: 'CENTER',
+                  verticalAlignment: 'MIDDLE',
+                  // Thiết lập tất cả các thuộc tính định dạng khác về mặc định
+                  numberFormat: {
+                    type: 'TEXT',
+                  },
+                  borders: {
+                    top: {
+                      style: 'SOLID',
+                      color: {
+                        red: 0.9,
+                        green: 0.9,
+                        blue: 0.9,
+                      },
+                    },
+                    bottom: {
+                      style: 'SOLID',
+                      color: {
+                        red: 0.9,
+                        green: 0.9,
+                        blue: 0.9,
+                      },
+                    },
+                    left: {
+                      style: 'SOLID',
+                      color: {
+                        red: 0.9,
+                        green: 0.9,
+                        blue: 0.9,
+                      },
+                    },
+                    right: {
+                      style: 'SOLID',
+                      color: {
+                        red: 0.9,
+                        green: 0.9,
+                        blue: 0.9,
+                      },
+                    },
+                  },
+                },
+              },
+              fields: 'userEnteredFormat',
+            },
+          },
+        ],
+      },
+    });
+
+    this.logger.log(
+      `Đã chuẩn bị định dạng hoàn chỉnh cho vùng dữ liệu ${sheetName} từ dòng ${startRow + 1} đến ${endRow}`,
+    );
+    return true;
   }
 }

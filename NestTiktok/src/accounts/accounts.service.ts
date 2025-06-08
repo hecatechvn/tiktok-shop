@@ -204,7 +204,7 @@ export class AccountsService {
         try {
           // Chỉ cấp quyền cho các email mới (không có trong danh sách cũ)
           if (!currentEmails.includes(email)) {
-            await this.googleSheetsService.shareSheet(sheetId, email, 'writer');
+            await this.googleSheetsService.shareSheet(sheetId, email, 'reader');
             this.logger.log(`Đã chia sẻ sheet ${sheetId} với email ${email}`);
           }
         } catch (shareError) {
