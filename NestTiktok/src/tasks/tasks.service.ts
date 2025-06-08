@@ -650,26 +650,17 @@ export class TasksService implements OnModuleInit {
     // Thực hiện công việc cụ thể cho tài khoản
     // Ví dụ: lấy dữ liệu đơn hàng, cập nhật data, v.v.
     try {
-      const accounts = await this.accountsService.findAll();
+      this.logger.log(`Đang xử lý dữ liệu cho tài khoản: ${account.appKey}`);
 
-      if (accounts.length === 0) {
-        this.logger.log('Không có tài khoản nào');
-        return;
-      }
+      // Kiểm tra và làm mới access token nếu cần
+      await this.checkAndRefreshToken(account);
 
-      for (const account of accounts) {
-        await this.runWriteSheetCurrentMonthAndUpdatePreviousMonth(account);
-        // Remove unused variables and empty line
-      }
+      // Chỉ xử lý tài khoản được truyền vào, không lấy lại tất cả tài khoản
+      await this.runWriteSheetCurrentMonthAndUpdatePreviousMonth(account);
 
-      //   // Mẫu xử lý, cần thay thế bằng logic thực tế
-      //   this.logger.log(`Đang xử lý dữ liệu cho tài khoản: ${account.appKey}`);
-
-      //   // Kiểm tra và làm mới access token nếu cần
-      //   await this.checkAndRefreshToken(account);
-
-      // Gọi các hàm xử lý cụ thể tùy theo yêu cầu của bạn
-      // Ví dụ: lấy dữ liệu đơn hàng từ TikTok và lưu vào database
+      this.logger.log(
+        `Hoàn thành xử lý dữ liệu cho tài khoản: ${account.appKey}`,
+      );
       return true;
     } catch (error) {
       this.logger.error(
