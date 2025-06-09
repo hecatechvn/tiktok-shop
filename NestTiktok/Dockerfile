@@ -1,7 +1,7 @@
 # Stage 1: Build stage
-FROM node:20-alpine AS build
+FROM node:20-slim AS build
 
-RUN apk add --no-cache python3 make g++ openssl
+RUN apt-get update && apt-get install -y python3 make g++ openssl
 
 WORKDIR /app
 
@@ -20,7 +20,7 @@ RUN mkdir -p ./dist/google-sheets
 COPY src/google-sheets/service-account.json ./dist/google-sheets/
 
 # Stage 2: Production image
-FROM node:20-alpine
+FROM node:20-slim
 
 WORKDIR /app
 
