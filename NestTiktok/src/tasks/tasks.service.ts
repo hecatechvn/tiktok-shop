@@ -339,12 +339,18 @@ export class TasksService implements OnModuleInit {
 
       // Sắp xếp dữ liệu theo ngày tạo (created_time) trước khi mapping
       orderData.sort((a, b) => {
-        const dateA = a.created_time
-          ? new Date(a.created_time.split('/').reverse().join('-')).getTime()
-          : 0;
-        const dateB = b.created_time
-          ? new Date(b.created_time.split('/').reverse().join('-')).getTime()
-          : 0;
+        // Kiểm tra nếu created_time không tồn tại
+        if (!a.created_time) return -1;
+        if (!b.created_time) return 1;
+
+        // Chuyển đổi định dạng DD/MM/YYYY thành Date object
+        const parseDate = (dateStr: string) => {
+          const [day, month, year] = dateStr.split('/').map(Number);
+          return new Date(year, month - 1, day).getTime();
+        };
+
+        const dateA = parseDate(a.created_time);
+        const dateB = parseDate(b.created_time);
         return dateA - dateB; // Sắp xếp tăng dần theo ngày (cũ đến mới)
       });
 
