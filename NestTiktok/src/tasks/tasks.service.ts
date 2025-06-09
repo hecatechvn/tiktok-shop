@@ -338,11 +338,15 @@ export class TasksService implements OnModuleInit {
       ];
 
       // Sắp xếp dữ liệu theo ngày tạo (created_time) trước khi mapping
-      // orderData.sort((a, b) => {
-      //   const dateA = a.created_time ? new Date(a.created_time).getTime() : 0;
-      //   const dateB = b.created_time ? new Date(b.created_time).getTime() : 0;
-      //   return dateA - dateB; // Sắp xếp tăng dần theo ngày (cũ đến mới)
-      // });
+      orderData.sort((a, b) => {
+        const dateA = a.created_time
+          ? new Date(a.created_time.split('/').reverse().join('-')).getTime()
+          : 0;
+        const dateB = b.created_time
+          ? new Date(b.created_time.split('/').reverse().join('-')).getTime()
+          : 0;
+        return dateA - dateB; // Sắp xếp tăng dần theo ngày (cũ đến mới)
+      });
 
       const mappingOrder = orderData.map((item) => [
         item.order_id || '',
@@ -436,7 +440,7 @@ export class TasksService implements OnModuleInit {
         await checkAndWaitForQuota();
 
         // Áp dụng định dạng hoàn chỉnh cho bảng sau khi thêm dữ liệu
-        const totalRows = mappingOrder.length + 1; // +1 cho header
+        const totalRows = mappingOrder.length + 1;
         await this.googleSheetsService.formatCompleteTable(
           spreadsheetId,
           sheetName,
@@ -518,7 +522,7 @@ export class TasksService implements OnModuleInit {
           });
           await checkAndWaitForQuota();
 
-          // Áp dụng định dạng hoàn chỉnh cho bảng ngay sau khi thêm dữ liệu
+          // Áp dụng định dạng hoàn chỉnh cho bảng sau khi thêm dữ liệu
           const totalRows = mappingOrder.length + 1; // +1 cho header
           await this.googleSheetsService.formatCompleteTable(
             spreadsheetId,
@@ -563,85 +567,98 @@ export class TasksService implements OnModuleInit {
   public async runWriteSheetCurrentMonthAndUpdatePreviousMonth(
     account: AccountDocument,
   ) {
-    const options: Partial<CommonParams> = {
-      app_key: account.appKey,
-      app_secret: account.appSecret,
-      access_token: account.accessToken,
-      shop_cipher: account.shopCipher[0].cipher,
-    };
+    try {
+      const options: Partial<CommonParams> = {
+        app_key: account.appKey,
+        app_secret: account.appSecret,
+        access_token: account.accessToken,
+        shop_cipher: account.shopCipher[0].cipher,
+      };
 
-    const currentDate = getDateInIndochinaTime();
-    const currentDay = currentDate.getDate();
+      const currentDate = getDateInIndochinaTime();
+      const currentDay = currentDate.getDate();
 
-    // Xử lý đơn hàng của tháng hiện tại
-    // Lấy ra ngày đầu tháng của tháng hiện tại
-    const currentMonth = currentDate.getMonth();
-    const currentYear = currentDate.getFullYear();
+      // Xử lý đơn hàng của tháng hiện tại
+      // Lấy ra ngày đầu tháng của tháng hiện tại
+      const currentMonth = currentDate.getMonth();
+      const currentYear = currentDate.getFullYear();
 
-    // Tạo ngày đầu tháng hiện tại
-    const currentDateStartOfMonth = new Date(currentYear, currentMonth, 1);
-    currentDateStartOfMonth.setHours(0, 0, 0, 0); // Đặt về đầu ngày (00:00:00)
+      // Tạo ngày đầu tháng hiện tại
+      const currentDateStartOfMonth = new Date(currentYear, currentMonth, 1);
+      currentDateStartOfMonth.setHours(0, 0, 0, 0); // Đặt về đầu ngày (00:00:00)
 
-    const currentMonthName = this.getMonthName(currentMonth);
+      const currentMonthName = this.getMonthName(currentMonth);
 
-    const dataCurrentMonth = await this.tiktokService.getOrdersByDateRange(
-      options as CommonParams,
-      currentDateStartOfMonth,
-      currentDate,
-    );
-
-    // Ghi dữ liệu vào sheet
-    await this.writeDataToSheet(
-      account.sheetId,
-      `${currentMonthName}-${currentYear}`,
-      dataCurrentMonth,
-    );
-
-    // Xử lý đơn hàng của tháng trước - to be implemented
-
-    if (currentDay < 16) {
-      // Tạo ngày 15 ngày trước
-      const date15DaysAgo = new Date(currentDate);
-      date15DaysAgo.setDate(currentDate.getDate() - 15);
-      date15DaysAgo.setHours(0, 0, 0, 0); // Đặt thời gian về 00:00:00
-
-      // Lấy dữ liệu đơn hàng từ 15 ngày trước đến hiện tại
-      const dataPreviousMonth = await this.tiktokService.getOrdersByDateRange(
+      const dataCurrentMonth = await this.tiktokService.getOrdersByDateRange(
         options as CommonParams,
-        date15DaysAgo,
+        currentDateStartOfMonth,
         currentDate,
       );
 
-      const getMonth =
-        currentDate.getMonth() === 0 ? 11 : currentDate.getMonth() - 1;
-
-      const dataPreviousMonthFiltered = dataPreviousMonth.filter((order) => {
-        if (!order.created_time) return false;
-
-        // Xử lý định dạng DD/MM/YYYY
-        const dateParts = order.created_time.split('/');
-        if (dateParts.length !== 3) return false;
-
-        // Chuyển từ DD/MM/YYYY sang MM/DD/YYYY để JavaScript parse đúng
-        const month = parseInt(dateParts[1], 10) - 1; // Tháng trong JS là 0-11
-
-        // Kiểm tra tháng có phải là tháng trước không
-        return month === getMonth;
-      });
-
-      // Lấy tên tháng của ngày 15 ngày trước
-      const previousMonth = date15DaysAgo.getMonth();
-      const previousYear = date15DaysAgo.getFullYear();
-      const previousMonthName = this.getMonthName(previousMonth);
-      const previousSheetName = `${previousMonthName}-${previousYear}`;
-
-      // Sử dụng hàm writeDataToSheet để cập nhật sheet - chỉ cập nhật đơn hàng hiện có
+      // Ghi dữ liệu vào sheet
       await this.writeDataToSheet(
         account.sheetId,
-        previousSheetName,
-        dataPreviousMonthFiltered,
-        // true,
+        `${currentMonthName}-${currentYear}`,
+        dataCurrentMonth,
       );
+
+      // Xử lý đơn hàng của tháng trước - chỉ thực hiện trong nửa đầu tháng
+      if (currentDay < 16) {
+        // Tạo ngày 15 ngày trước
+        const date15DaysAgo = new Date(currentDate);
+        date15DaysAgo.setDate(currentDate.getDate() - 15);
+        date15DaysAgo.setHours(0, 0, 0, 0); // Đặt thời gian về 00:00:00
+
+        // Lấy dữ liệu đơn hàng từ 15 ngày trước đến hiện tại
+        const dataPreviousMonth = await this.tiktokService.getOrdersByDateRange(
+          options as CommonParams,
+          date15DaysAgo,
+          currentDate,
+        );
+
+        const getMonth =
+          currentDate.getMonth() === 0 ? 11 : currentDate.getMonth() - 1;
+
+        const dataPreviousMonthFiltered = dataPreviousMonth.filter((order) => {
+          if (!order.created_time) return false;
+
+          // Xử lý định dạng DD/MM/YYYY
+          const dateParts = order.created_time.split('/');
+          if (dateParts.length !== 3) return false;
+
+          // Chuyển từ DD/MM/YYYY sang MM/DD/YYYY để JavaScript parse đúng
+          const month = parseInt(dateParts[1], 10) - 1; // Tháng trong JS là 0-11
+
+          // Kiểm tra tháng có phải là tháng trước không
+          return month === getMonth;
+        });
+
+        // Nếu có dữ liệu của tháng trước
+        if (dataPreviousMonthFiltered.length > 0) {
+          // Lấy tên tháng của tháng trước
+          const previousMonth = getMonth;
+          const previousYear =
+            previousMonth === 11 && currentMonth === 0
+              ? currentYear - 1
+              : currentYear;
+          const previousMonthName = this.getMonthName(previousMonth);
+          const previousSheetName = `${previousMonthName}-${previousYear}`;
+
+          // Sử dụng hàm writeDataToSheet để cập nhật sheet
+          await this.writeDataToSheet(
+            account.sheetId,
+            previousSheetName,
+            dataPreviousMonthFiltered,
+          );
+        }
+      }
+      return true;
+    } catch (error) {
+      this.logger.error(
+        `Lỗi khi xử lý dữ liệu cho tài khoản ${account.appKey}:`,
+        error,
+      );
+      return false;
     }
   }
 
