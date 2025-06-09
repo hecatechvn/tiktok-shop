@@ -367,10 +367,16 @@ export class GoogleSheetsService {
                     bold: false,
                     fontSize: 10,
                   },
+                  padding: {
+                    left: 10,
+                    right: 10,
+                    top: 2,
+                    bottom: 2,
+                  },
                 },
               },
               fields:
-                'userEnteredFormat.horizontalAlignment,userEnteredFormat.verticalAlignment,userEnteredFormat.wrapStrategy,userEnteredFormat.backgroundColor,userEnteredFormat.textFormat',
+                'userEnteredFormat.horizontalAlignment,userEnteredFormat.verticalAlignment,userEnteredFormat.wrapStrategy,userEnteredFormat.backgroundColor,userEnteredFormat.textFormat,userEnteredFormat.padding',
             },
           },
         ],
@@ -403,10 +409,16 @@ export class GoogleSheetsService {
                     bold: true,
                     fontSize: 12,
                   },
+                  padding: {
+                    left: 10,
+                    right: 10,
+                    top: 2,
+                    bottom: 2,
+                  },
                 },
               },
               fields:
-                'userEnteredFormat.backgroundColor,userEnteredFormat.textFormat',
+                'userEnteredFormat.backgroundColor,userEnteredFormat.textFormat,userEnteredFormat.padding',
             },
           },
           // Cố định cột đầu tiên và header

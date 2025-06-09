@@ -354,7 +354,13 @@ export class TasksService implements OnModuleInit {
         return dateA - dateB; // Sắp xếp tăng dần theo ngày (cũ đến mới)
       });
 
-      const mappingOrder = orderData.map((item) => [
+      // Lọc dữ liệu trùng lặp bằng cách tạo composite key
+      const uniqueOrderData = this.removeDuplicateOrders(orderData);
+      this.logger.log(
+        `Đã lọc từ ${orderData.length} xuống ${uniqueOrderData.length} đơn hàng sau khi xóa trùng lặp cho sheet ${sheetName}`,
+      );
+
+      const mappingOrder = uniqueOrderData.map((item) => [
         item.order_id || '',
         item.order_status || '',
         item.order_substatus || '',
@@ -427,7 +433,7 @@ export class TasksService implements OnModuleInit {
         });
         await checkAndWaitForQuota();
 
-        // Chuẩn bị định dạng cho vùng dữ liệu trước khi thêm dữ liệu mới
+        // Chuẩn bị định dạng cơ bản cho vùng dữ liệu trước khi thêm dữ liệu mới
         await this.googleSheetsService.prepareDataArea(
           spreadsheetId,
           sheetName,
@@ -435,17 +441,19 @@ export class TasksService implements OnModuleInit {
           mappingOrder.length + 100, // Dự phòng thêm 100 dòng
         );
         await checkAndWaitForQuota();
-        console.log(`Đã chuẩn bị định dạng cho vùng dữ liệu ${sheetName}`);
+        console.log(
+          `Đã chuẩn bị định dạng cơ bản cho vùng dữ liệu ${sheetName}`,
+        );
 
         // Ghi toàn bộ data 1 lần
-        await this.googleSheetsService.appendToSheet({
+        await this.googleSheetsService.writeToSheet({
           spreadsheetId,
           range: `${sheetName}!A2`,
           values: mappingOrder,
         });
         await checkAndWaitForQuota();
 
-        // Áp dụng định dạng hoàn chỉnh cho bảng sau khi thêm dữ liệu
+        // Áp dụng định dạng hoàn chỉnh và tự động điều chỉnh độ rộng cột sau khi thêm dữ liệu
         const totalRows = mappingOrder.length + 1;
         await this.googleSheetsService.formatCompleteTable(
           spreadsheetId,
@@ -471,7 +479,7 @@ export class TasksService implements OnModuleInit {
           });
           await checkAndWaitForQuota();
 
-          // Chuẩn bị định dạng cho vùng dữ liệu trước khi thêm dữ liệu mới
+          // Chuẩn bị định dạng cơ bản cho vùng dữ liệu trước khi thêm dữ liệu mới
           await this.googleSheetsService.prepareDataArea(
             spreadsheetId,
             sheetName,
@@ -479,16 +487,19 @@ export class TasksService implements OnModuleInit {
             mappingOrder.length + 100, // Dự phòng thêm 100 dòng
           );
           await checkAndWaitForQuota();
-          console.log(`Đã chuẩn bị định dạng cho vùng dữ liệu ${sheetName}`);
+          console.log(
+            `Đã chuẩn bị định dạng cơ bản cho vùng dữ liệu ${sheetName}`,
+          );
 
-          await this.googleSheetsService.appendToSheet({
+          // Ghi dữ liệu
+          await this.googleSheetsService.writeToSheet({
             spreadsheetId,
             range: `${sheetName}!A2`,
             values: mappingOrder,
           });
           await checkAndWaitForQuota();
 
-          // Áp dụng định dạng hoàn chỉnh cho bảng sau khi thêm dữ liệu
+          // Áp dụng định dạng hoàn chỉnh và tự động điều chỉnh độ rộng cột sau khi thêm dữ liệu
           const totalRows = mappingOrder.length + 1; // +1 cho header
           await this.googleSheetsService.formatCompleteTable(
             spreadsheetId,
@@ -509,7 +520,7 @@ export class TasksService implements OnModuleInit {
           await checkAndWaitForQuota();
           console.log(`Đã xóa tất cả dữ liệu cũ của sheet ${sheetName}`);
 
-          // Chuẩn bị định dạng cho vùng dữ liệu trước khi thêm dữ liệu mới
+          // Chuẩn bị định dạng cơ bản cho vùng dữ liệu trước khi thêm dữ liệu mới
           // Số dòng là số dòng dữ liệu + 100 dòng buffer để đảm bảo bao phủ đủ
           await this.googleSheetsService.prepareDataArea(
             spreadsheetId,
@@ -518,17 +529,19 @@ export class TasksService implements OnModuleInit {
             mappingOrder.length + 100, // Dự phòng thêm 100 dòng
           );
           await checkAndWaitForQuota();
-          console.log(`Đã chuẩn bị định dạng cho vùng dữ liệu ${sheetName}`);
+          console.log(
+            `Đã chuẩn bị định dạng cơ bản cho vùng dữ liệu ${sheetName}`,
+          );
 
           // Thêm tất cả dữ liệu mới vào sheet
-          await this.googleSheetsService.appendToSheet({
+          await this.googleSheetsService.writeToSheet({
             spreadsheetId,
             range: `${sheetName}!A2`,
             values: mappingOrder,
           });
           await checkAndWaitForQuota();
 
-          // Áp dụng định dạng hoàn chỉnh cho bảng sau khi thêm dữ liệu
+          // Áp dụng định dạng hoàn chỉnh và tự động điều chỉnh độ rộng cột sau khi thêm dữ liệu
           const totalRows = mappingOrder.length + 1; // +1 cho header
           await this.googleSheetsService.formatCompleteTable(
             spreadsheetId,
@@ -846,5 +859,41 @@ export class TasksService implements OnModuleInit {
       );
       return false;
     }
+  }
+
+  // Phương thức xóa các đơn hàng trùng lặp
+  private removeDuplicateOrders(
+    orders: ExtractedOrderItem[],
+  ): ExtractedOrderItem[] {
+    const uniqueOrders = new Map<string, ExtractedOrderItem>();
+    const duplicates = new Set<string>();
+
+    for (const order of orders) {
+      // Tạo composite key từ nhiều trường để xác định chính xác đơn hàng
+      // Kết hợp các trường quan trọng để tạo key duy nhất
+      const key = [
+        order.order_id || '',
+        order.sku_id || '',
+        order.product_name || '',
+        order.quantity || '',
+        order.created_time || '',
+        order.order_status || '',
+      ].join('-');
+
+      // Nếu key chưa tồn tại, thêm vào Map
+      if (!uniqueOrders.has(key)) {
+        uniqueOrders.set(key, order);
+      } else {
+        duplicates.add(key);
+      }
+    }
+
+    if (duplicates.size > 0) {
+      this.logger.log(
+        `Phát hiện ${duplicates.size} đơn hàng trùng lặp đã được lọc bỏ`,
+      );
+    }
+
+    return Array.from(uniqueOrders.values());
   }
 }
