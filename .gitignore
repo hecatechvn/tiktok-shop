@@ -39,3 +39,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# service account
+/NestTiktok/src/google-sheets/service-account.json
