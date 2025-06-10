@@ -387,16 +387,60 @@ export class TasksService implements OnModuleInit {
         item.cancel_reason || '',
       ]) as SheetValues;
 
-      // Kiểm tra sheet có tồn tại
-      const checkExist = await this.googleSheetsService.sheetExists(
-        spreadsheetId,
-        sheetName,
-      );
-
       // Quota limit + helper
       const QUOTA_LIMIT = 60;
       let requestCount = 0;
       let startTime = Date.now();
+
+      // Hàm thực hiện retry với exponential backoff
+      const executeWithRetry = async <T>(
+        operation: () => Promise<T>,
+        maxRetries = 5,
+      ): Promise<T> => {
+        let retries = 0;
+        while (true) {
+          try {
+            return await operation();
+          } catch (error: unknown) {
+            retries++;
+            if (retries > maxRetries) {
+              throw error; // Nếu đã vượt quá số lần retry, ném lỗi
+            }
+
+            // Kiểm tra nếu là lỗi 503 Service Unavailable
+            let isServiceUnavailable = false;
+
+            // Type guard để kiểm tra các thuộc tính của error
+            if (error && typeof error === 'object') {
+              // Sử dụng type assertion an toàn hơn
+              const err = error as {
+                response?: { status?: number };
+                status?: number;
+                code?: number | string;
+              };
+
+              isServiceUnavailable =
+                err.response?.status === 503 ||
+                err.status === 503 ||
+                err.code === 503;
+            }
+
+            if (!isServiceUnavailable) {
+              throw error; // Nếu không phải lỗi 503, ném lỗi ngay lập tức
+            }
+
+            // Tính thời gian chờ với exponential backoff (2^retries * 1000ms + random)
+            const waitTime = Math.min(
+              Math.pow(2, retries) * 1000 + Math.random() * 1000,
+              60000,
+            );
+            this.logger.log(
+              `Google Sheets API không khả dụng. Thử lại lần ${retries} sau ${waitTime}ms...`,
+            );
+            await new Promise((resolve) => setTimeout(resolve, waitTime));
+          }
+        }
+      };
 
       const checkAndWaitForQuota = async () => {
         requestCount++;
@@ -417,28 +461,39 @@ export class TasksService implements OnModuleInit {
         }
       };
 
+      // Kiểm tra sheet có tồn tại
+      const checkExist = await executeWithRetry(() =>
+        this.googleSheetsService.sheetExists(spreadsheetId, sheetName),
+      );
+
       if (!checkExist) {
         // Thêm mới sheet
-        await this.googleSheetsService.addSheet({
-          spreadsheetId,
-          sheetTitle: sheetName,
-        });
+        await executeWithRetry(() =>
+          this.googleSheetsService.addSheet({
+            spreadsheetId,
+            sheetTitle: sheetName,
+          }),
+        );
         await checkAndWaitForQuota();
 
         // Ghi header
-        await this.googleSheetsService.writeToSheet({
-          spreadsheetId,
-          range: `${sheetName}!A1`,
-          values: [header],
-        });
+        await executeWithRetry(() =>
+          this.googleSheetsService.writeToSheet({
+            spreadsheetId,
+            range: `${sheetName}!A1`,
+            values: [header],
+          }),
+        );
         await checkAndWaitForQuota();
 
         // Chuẩn bị định dạng cơ bản cho vùng dữ liệu trước khi thêm dữ liệu mới
-        await this.googleSheetsService.prepareDataArea(
-          spreadsheetId,
-          sheetName,
-          1, // Bắt đầu từ dòng 1 (sau header)
-          mappingOrder.length + 100, // Dự phòng thêm 100 dòng
+        await executeWithRetry(() =>
+          this.googleSheetsService.prepareDataArea(
+            spreadsheetId,
+            sheetName,
+            1, // Bắt đầu từ dòng 1 (sau header)
+            mappingOrder.length + 100, // Dự phòng thêm 100 dòng
+          ),
         );
         await checkAndWaitForQuota();
         console.log(
@@ -446,45 +501,55 @@ export class TasksService implements OnModuleInit {
         );
 
         // Ghi toàn bộ data 1 lần
-        await this.googleSheetsService.writeToSheet({
-          spreadsheetId,
-          range: `${sheetName}!A2`,
-          values: mappingOrder,
-        });
+        await executeWithRetry(() =>
+          this.googleSheetsService.writeToSheet({
+            spreadsheetId,
+            range: `${sheetName}!A2`,
+            values: mappingOrder,
+          }),
+        );
         await checkAndWaitForQuota();
 
         // Áp dụng định dạng hoàn chỉnh và tự động điều chỉnh độ rộng cột sau khi thêm dữ liệu
         const totalRows = mappingOrder.length + 1;
-        await this.googleSheetsService.formatCompleteTable(
-          spreadsheetId,
-          sheetName,
-          totalRows,
+        await executeWithRetry(() =>
+          this.googleSheetsService.formatCompleteTable(
+            spreadsheetId,
+            sheetName,
+            totalRows,
+          ),
         );
         await checkAndWaitForQuota();
 
         console.log(`Đã ghi toàn bộ dữ liệu cho sheet ${sheetName}`);
       } else {
         // Sheet đã tồn tại
-        const existingData = await this.googleSheetsService.readSheet({
-          spreadsheetId,
-          range: `${sheetName}!A:Z`,
-        });
+        const existingData = await executeWithRetry(() =>
+          this.googleSheetsService.readSheet({
+            spreadsheetId,
+            range: `${sheetName}!A:Z`,
+          }),
+        );
 
         if (existingData.length === 0) {
           // Sheet rỗng, ghi header
-          await this.googleSheetsService.writeToSheet({
-            spreadsheetId,
-            range: `${sheetName}!A1`,
-            values: [header],
-          });
+          await executeWithRetry(() =>
+            this.googleSheetsService.writeToSheet({
+              spreadsheetId,
+              range: `${sheetName}!A1`,
+              values: [header],
+            }),
+          );
           await checkAndWaitForQuota();
 
           // Chuẩn bị định dạng cơ bản cho vùng dữ liệu trước khi thêm dữ liệu mới
-          await this.googleSheetsService.prepareDataArea(
-            spreadsheetId,
-            sheetName,
-            1, // Bắt đầu từ dòng 1 (sau header)
-            mappingOrder.length + 100, // Dự phòng thêm 100 dòng
+          await executeWithRetry(() =>
+            this.googleSheetsService.prepareDataArea(
+              spreadsheetId,
+              sheetName,
+              1, // Bắt đầu từ dòng 1 (sau header)
+              mappingOrder.length + 100, // Dự phòng thêm 100 dòng
+            ),
           );
           await checkAndWaitForQuota();
           console.log(
@@ -492,19 +557,23 @@ export class TasksService implements OnModuleInit {
           );
 
           // Ghi dữ liệu
-          await this.googleSheetsService.writeToSheet({
-            spreadsheetId,
-            range: `${sheetName}!A2`,
-            values: mappingOrder,
-          });
+          await executeWithRetry(() =>
+            this.googleSheetsService.writeToSheet({
+              spreadsheetId,
+              range: `${sheetName}!A2`,
+              values: mappingOrder,
+            }),
+          );
           await checkAndWaitForQuota();
 
           // Áp dụng định dạng hoàn chỉnh và tự động điều chỉnh độ rộng cột sau khi thêm dữ liệu
           const totalRows = mappingOrder.length + 1; // +1 cho header
-          await this.googleSheetsService.formatCompleteTable(
-            spreadsheetId,
-            sheetName,
-            totalRows,
+          await executeWithRetry(() =>
+            this.googleSheetsService.formatCompleteTable(
+              spreadsheetId,
+              sheetName,
+              totalRows,
+            ),
           );
           await checkAndWaitForQuota();
 
@@ -513,20 +582,21 @@ export class TasksService implements OnModuleInit {
           // Đã có data → xóa hết dữ liệu cũ (trừ header) và thêm lại dữ liệu mới
 
           // Xóa tất cả dữ liệu cũ trừ hàng header
-          await this.googleSheetsService.clearSheetData(
-            spreadsheetId,
-            sheetName,
+          await executeWithRetry(() =>
+            this.googleSheetsService.clearSheetData(spreadsheetId, sheetName),
           );
           await checkAndWaitForQuota();
           console.log(`Đã xóa tất cả dữ liệu cũ của sheet ${sheetName}`);
 
           // Chuẩn bị định dạng cơ bản cho vùng dữ liệu trước khi thêm dữ liệu mới
           // Số dòng là số dòng dữ liệu + 100 dòng buffer để đảm bảo bao phủ đủ
-          await this.googleSheetsService.prepareDataArea(
-            spreadsheetId,
-            sheetName,
-            1, // Bắt đầu từ dòng 1 (sau header)
-            mappingOrder.length + 100, // Dự phòng thêm 100 dòng
+          await executeWithRetry(() =>
+            this.googleSheetsService.prepareDataArea(
+              spreadsheetId,
+              sheetName,
+              1, // Bắt đầu từ dòng 1 (sau header)
+              mappingOrder.length + 100, // Dự phòng thêm 100 dòng
+            ),
           );
           await checkAndWaitForQuota();
           console.log(
@@ -534,19 +604,23 @@ export class TasksService implements OnModuleInit {
           );
 
           // Thêm tất cả dữ liệu mới vào sheet
-          await this.googleSheetsService.writeToSheet({
-            spreadsheetId,
-            range: `${sheetName}!A2`,
-            values: mappingOrder,
-          });
+          await executeWithRetry(() =>
+            this.googleSheetsService.writeToSheet({
+              spreadsheetId,
+              range: `${sheetName}!A2`,
+              values: mappingOrder,
+            }),
+          );
           await checkAndWaitForQuota();
 
           // Áp dụng định dạng hoàn chỉnh và tự động điều chỉnh độ rộng cột sau khi thêm dữ liệu
           const totalRows = mappingOrder.length + 1; // +1 cho header
-          await this.googleSheetsService.formatCompleteTable(
-            spreadsheetId,
-            sheetName,
-            totalRows,
+          await executeWithRetry(() =>
+            this.googleSheetsService.formatCompleteTable(
+              spreadsheetId,
+              sheetName,
+              totalRows,
+            ),
           );
           await checkAndWaitForQuota();
 
@@ -595,82 +669,83 @@ export class TasksService implements OnModuleInit {
       };
 
       const currentDate = getDateInIndochinaTime();
-      const currentDay = currentDate.getDate();
-
-      // Xử lý đơn hàng của tháng hiện tại
-      // Lấy ra ngày đầu tháng của tháng hiện tại
       const currentMonth = currentDate.getMonth();
       const currentYear = currentDate.getFullYear();
-
-      // Tạo ngày đầu tháng hiện tại
-      const currentDateStartOfMonth = new Date(currentYear, currentMonth, 1);
-      currentDateStartOfMonth.setHours(0, 0, 0, 0); // Đặt về đầu ngày (00:00:00)
-
       const currentMonthName = this.getMonthName(currentMonth);
 
-      const dataCurrentMonth = await this.tiktokService.getOrdersByDateRange(
+      // Tạo ngày 15 ngày trước thay vì đầu tháng
+      const date15DaysAgo = new Date(currentDate);
+      date15DaysAgo.setDate(currentDate.getDate() - 15);
+      date15DaysAgo.setHours(0, 0, 0, 0); // Đặt thời gian về 00:00:00
+
+      // Lấy dữ liệu đơn hàng từ 15 ngày trước đến hiện tại
+      const allRecentOrders = await this.tiktokService.getOrdersByDateRange(
         options as CommonParams,
-        currentDateStartOfMonth,
+        date15DaysAgo,
         currentDate,
       );
 
-      // Ghi dữ liệu vào sheet
-      await this.writeDataToSheet(
-        account.sheetId,
-        `${currentMonthName}-${currentYear}`,
-        dataCurrentMonth,
-      );
+      // Xác định tháng trước
+      const previousMonth = currentMonth === 0 ? 11 : currentMonth - 1;
+      const previousYear =
+        previousMonth === 11 && currentMonth === 0
+          ? currentYear - 1
+          : currentYear;
+      const previousMonthName = this.getMonthName(previousMonth);
 
-      // Xử lý đơn hàng của tháng trước - chỉ thực hiện trong nửa đầu tháng
-      if (currentDay < 16) {
-        // Tạo ngày 15 ngày trước
-        const date15DaysAgo = new Date(currentDate);
-        date15DaysAgo.setDate(currentDate.getDate() - 15);
-        date15DaysAgo.setHours(0, 0, 0, 0); // Đặt thời gian về 00:00:00
+      // Phân loại đơn hàng theo tháng
+      const currentMonthOrders: ExtractedOrderItem[] = [];
+      const previousMonthOrders: ExtractedOrderItem[] = [];
 
-        // Lấy dữ liệu đơn hàng từ 15 ngày trước đến hiện tại
-        const dataPreviousMonth = await this.tiktokService.getOrdersByDateRange(
-          options as CommonParams,
-          date15DaysAgo,
-          currentDate,
-        );
+      for (const order of allRecentOrders) {
+        if (!order.created_time) continue;
 
-        const getMonth =
-          currentDate.getMonth() === 0 ? 11 : currentDate.getMonth() - 1;
+        // Xử lý định dạng DD/MM/YYYY
+        const dateParts = order.created_time.split('/');
+        if (dateParts.length !== 3) continue;
 
-        const dataPreviousMonthFiltered = dataPreviousMonth.filter((order) => {
-          if (!order.created_time) return false;
+        // Chuyển từ DD/MM/YYYY sang tháng trong JS (0-11)
+        const orderMonth = parseInt(dateParts[1], 10) - 1;
+        const orderYear = parseInt(dateParts[2], 10);
 
-          // Xử lý định dạng DD/MM/YYYY
-          const dateParts = order.created_time.split('/');
-          if (dateParts.length !== 3) return false;
-
-          // Chuyển từ DD/MM/YYYY sang MM/DD/YYYY để JavaScript parse đúng
-          const month = parseInt(dateParts[1], 10) - 1; // Tháng trong JS là 0-11
-
-          // Kiểm tra tháng có phải là tháng trước không
-          return month === getMonth;
-        });
-
-        // Nếu có dữ liệu của tháng trước
-        if (dataPreviousMonthFiltered.length > 0) {
-          // Lấy tên tháng của tháng trước
-          const previousMonth = getMonth;
-          const previousYear =
-            previousMonth === 11 && currentMonth === 0
-              ? currentYear - 1
-              : currentYear;
-          const previousMonthName = this.getMonthName(previousMonth);
-          const previousSheetName = `${previousMonthName}-${previousYear}`;
-
-          // Sử dụng hàm writeDataToSheet để cập nhật sheet
-          await this.writeDataToSheet(
-            account.sheetId,
-            previousSheetName,
-            dataPreviousMonthFiltered,
-          );
+        // Phân loại đơn hàng vào tháng tương ứng
+        if (orderMonth === currentMonth && orderYear === currentYear) {
+          currentMonthOrders.push(order);
+        } else if (
+          orderMonth === previousMonth &&
+          (previousMonth === 11 && currentMonth === 0
+            ? orderYear === previousYear
+            : orderYear === currentYear)
+        ) {
+          previousMonthOrders.push(order);
         }
       }
+
+      // Ghi dữ liệu vào sheet tháng hiện tại nếu có đơn hàng
+      if (currentMonthOrders.length > 0) {
+        this.logger.log(
+          `Đang ghi ${currentMonthOrders.length} đơn hàng vào sheet ${currentMonthName}-${currentYear}`,
+        );
+        await this.writeDataToSheet(
+          account.sheetId,
+          `${currentMonthName}-${currentYear}`,
+          currentMonthOrders,
+        );
+      }
+
+      // Ghi dữ liệu vào sheet tháng trước nếu có đơn hàng
+      if (previousMonthOrders.length > 0) {
+        const previousSheetName = `${previousMonthName}-${previousYear}`;
+        this.logger.log(
+          `Đang ghi ${previousMonthOrders.length} đơn hàng vào sheet ${previousSheetName}`,
+        );
+        await this.writeDataToSheet(
+          account.sheetId,
+          previousSheetName,
+          previousMonthOrders,
+        );
+      }
+
       return true;
     } catch (error) {
       this.logger.error(
