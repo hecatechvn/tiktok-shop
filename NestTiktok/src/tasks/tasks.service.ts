@@ -666,6 +666,7 @@ export class TasksService implements OnModuleInit {
         app_secret: account.appSecret,
         access_token: account.accessToken,
         shop_cipher: account.shopCipher[0].cipher,
+        region: account.shopCipher[0].region,
       };
 
       const currentDate = getDateInIndochinaTime();
@@ -853,6 +854,7 @@ export class TasksService implements OnModuleInit {
       app_secret: account.appSecret,
       access_token: account.accessToken,
       shop_cipher: account.shopCipher[0].cipher,
+      region: account.shopCipher[0].region,
     };
 
     const result = await this.tiktokService.getAllOrders(

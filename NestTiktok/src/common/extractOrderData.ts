@@ -1,6 +1,6 @@
 import { OrderStatus } from 'src/enum';
 import { ExtractedOrderItem, Order } from 'src/types/order';
-import { formatDateTimeVN } from 'src/utils/date';
+import { formatDateTimeByRegion } from 'src/utils/date';
 
 /**
  * Format Order ID nếu kết thúc bằng "000" thành dạng scientific notation
@@ -18,9 +18,13 @@ const formatOrderId = (orderId: string): string => {
 /**
  * Trích xuất các trường dữ liệu cụ thể từ dữ liệu đơn hàng theo yêu cầu
  * @param {Order[]} orderData - Dữ liệu đơn hàng thô từ phản hồi API
+ * @param {string} region - Mã vùng của shop (VN, ID, TH, etc.)
  * @returns {ExtractedOrderItem[]} - Dữ liệu đơn hàng đã trích xuất với các trường theo yêu cầu
  */
-export const extractOrderData = (orderData: Order[]): ExtractedOrderItem[] => {
+export const extractOrderData = (
+  orderData: Order[],
+  region?: string,
+): ExtractedOrderItem[] => {
   const extractedData: ExtractedOrderItem[] = [];
 
   // Kiểm tra xem dữ liệu có hợp lệ không
@@ -135,13 +139,13 @@ export const extractOrderData = (orderData: Order[]): ExtractedOrderItem[] => {
             order.payment?.shipping_fee_seller_discount || '0',
           shipping_fee_platform_discount:
             order.payment?.shipping_fee_platform_discount || '0', // Giảm giá phí vận chuyển từ nền tảng
-          payment_platform_discount: order.payment?.platform_discount || '0', // Giảm giá thanh toán từ nền tảng
+          payment_platform_discount: order.payment?.platform_discount || '0',
           taxes: order.payment?.tax || '0', // Thuế
           order_amount: order.payment?.total_amount || '0', // Tổng số tiền đơn hàng
 
           order_refund_amount: orderRefundAmount, // Số tiền hoàn lại theo logic mới
 
-          created_time: formatDateTimeVN(order.create_time),
+          created_time: formatDateTimeByRegion(order.create_time, region),
           cancel_reason: order.cancel_reason || item.cancel_reason || '', // Lý do hủy
         };
 
@@ -203,7 +207,7 @@ export const extractOrderData = (orderData: Order[]): ExtractedOrderItem[] => {
         taxes: order.payment?.tax || '0',
         order_amount: order.payment?.total_amount || '0',
         order_refund_amount: orderRefundAmount, // Số tiền hoàn lại theo logic mới
-        created_time: formatDateTimeVN(order.create_time),
+        created_time: formatDateTimeByRegion(order.create_time, region),
         cancel_reason: order.cancel_reason || '',
       };
 

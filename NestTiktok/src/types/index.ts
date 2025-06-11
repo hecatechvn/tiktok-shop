@@ -49,6 +49,7 @@ export type CommonParams = {
   page_size: number;
   shop_cipher: string;
   query_params: QueryParams;
+  region?: string; // Shop region code (VN, ID, TH, etc.)
 };
 
 export type RefreshTokenResponse = {

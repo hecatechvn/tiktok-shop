@@ -245,7 +245,7 @@ export class TiktokService {
       }
     }
 
-    // Lọc đơn hàng để đảm bảo nằm trong khoảng thời gian
+    // Lọc đơn hàng theo khoảng thời gian
     const validOrders = allOrders.filter((order) => {
       return (
         order.create_time >= startTimestamp && order.create_time <= endTimestamp
@@ -261,7 +261,13 @@ export class TiktokService {
     }
 
     console.log(`✅ Đã lấy tổng cộng ${validOrders.length} đơn hàng.`);
-    return extractOrderData(validOrders);
+
+    let region: string | undefined;
+    if (options.region) {
+      region = options.region;
+    }
+
+    return extractOrderData(validOrders, region);
   }
 
   /**
@@ -280,6 +286,12 @@ export class TiktokService {
 
     // Lưu trữ tất cả đơn hàng
     const allOrders: ExtractedOrderItem[] = [];
+
+    // Extract region from options if available
+    let region: string | undefined;
+    if (options.region) {
+      region = options.region;
+    }
 
     // Lấy đơn hàng gần đây (15 ngày gần nhất) - những đơn này sẽ ghi đè lên dữ liệu hiện có
     let pageToken = '';
@@ -305,7 +317,7 @@ export class TiktokService {
       const response = await this.getOrderList(recentOrdersOptions);
 
       if (response.code === 0 && response.data && response.data.orders) {
-        const extractedOrders = extractOrderData(response.data.orders);
+        const extractedOrders = extractOrderData(response.data.orders, region);
         allOrders.push(...extractedOrders);
 
         if (response.data.next_page_token) {
@@ -347,7 +359,7 @@ export class TiktokService {
       const response = await this.getOrderList(olderOrdersOptions);
 
       if (response.code === 0 && response.data && response.data.orders) {
-        const extractedOrders = extractOrderData(response.data.orders);
+        const extractedOrders = extractOrderData(response.data.orders, region);
         allOrders.push(...extractedOrders);
 
         if (response.data.next_page_token) {
