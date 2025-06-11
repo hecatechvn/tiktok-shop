@@ -14,7 +14,12 @@ import { CommonParams, RequestOption, QueryParams } from 'src/types';
 import { ExtractedOrderItem, Order } from 'src/types/order';
 
 import { startOfMonth, endOfDay, setDate, format } from 'date-fns';
-import { toUnixTimestamp } from 'src/utils/date';
+import {
+  getCurrentDateByRegion,
+  getDateDaysAgoByRegion,
+  toUnixTimestampByRegion,
+  getTimezoneByRegion,
+} from 'src/utils/date';
 import { sendRequest } from 'src/common/sendReq';
 
 @Injectable()
@@ -274,30 +279,32 @@ export class TiktokService {
    * Lấy tất cả đơn hàng từ đầu năm đến hiện tại
    */
   async getAllOrders(options: CommonParams): Promise<AllOrdersResponse> {
-    // Tính timestamp cho ngày 1 tháng 1 năm hiện tại
-    const currentYear = new Date().getFullYear();
-    const startDate = new Date(currentYear, 0, 1);
-    const startTimestamp = Math.floor(startDate.getTime() / 1000);
+    // Lấy region từ options
+    const region = options.region;
 
-    // Tính timestamp cho 15 ngày trước
-    const fifteenDaysAgo = new Date();
-    fifteenDaysAgo.setDate(fifteenDaysAgo.getDate() - 15);
-    const fifteenDaysAgoTimestamp = Math.floor(fifteenDaysAgo.getTime() / 1000);
+    // Tính timestamp cho ngày 1 tháng 1 năm hiện tại theo timezone của region
+    const currentDate = getCurrentDateByRegion(region);
+    const currentYear = currentDate.getFullYear();
+    const startDate = new Date(currentYear, 0, 1);
+    const startTimestamp = toUnixTimestampByRegion(startDate, region);
+
+    // Tính timestamp cho 15 ngày trước theo timezone của region
+    const fifteenDaysAgo = getDateDaysAgoByRegion(15, region);
+    const fifteenDaysAgoTimestamp = toUnixTimestampByRegion(
+      fifteenDaysAgo,
+      region,
+    );
 
     // Lưu trữ tất cả đơn hàng
     const allOrders: ExtractedOrderItem[] = [];
-
-    // Extract region from options if available
-    let region: string | undefined;
-    if (options.region) {
-      region = options.region;
-    }
 
     // Lấy đơn hàng gần đây (15 ngày gần nhất) - những đơn này sẽ ghi đè lên dữ liệu hiện có
     let pageToken = '';
     let hasMoreRecentOrders = true;
 
-    console.log('Đang lấy đơn hàng gần đây (15 ngày gần nhất)...');
+    console.log(
+      `Đang lấy đơn hàng gần đây (15 ngày gần nhất) cho region ${region || 'VN'}...`,
+    );
 
     while (hasMoreRecentOrders) {
       const recentOrdersOptions: CommonParams = {
@@ -427,13 +434,20 @@ export class TiktokService {
     page_size = 100,
   ) {
     try {
-      // Tính toán thời gian bắt đầu dựa trên số ngày
-      const startDate = new Date();
-      startDate.setDate(startDate.getDate() - daysAgo);
-      const startTimestamp = toUnixTimestamp(startDate);
-      const endTimestamp = toUnixTimestamp(new Date());
+      // Lấy region từ options
+      const region = options.region;
 
-      console.log(`Đang lấy đơn hàng trong ${daysAgo} ngày gần nhất...`);
+      // Tính toán thời gian bắt đầu dựa trên số ngày theo timezone của region
+      const startDate = getDateDaysAgoByRegion(daysAgo, region);
+      const endDate = getCurrentDateByRegion(region);
+
+      const startTimestamp = toUnixTimestampByRegion(startDate, region);
+      const endTimestamp = toUnixTimestampByRegion(endDate, region);
+
+      console.log(
+        `Đang lấy đơn hàng trong ${daysAgo} ngày gần nhất cho region ${region || 'VN'}...`,
+      );
+      console.log(`Timezone: ${getTimezoneByRegion(region)}`);
       console.log(`Timestamp: ${startTimestamp} → ${endTimestamp}`);
 
       return await this.fetchOrdersWithPagination(
@@ -453,33 +467,40 @@ export class TiktokService {
    */
   async fetchCurrentMonthOrders(options: CommonParams, page_size = 100) {
     try {
-      // Lấy ngày hiện tại
-      const currentDate = new Date();
+      // Lấy region từ options
+      const region = options.region;
+
+      // Lấy ngày hiện tại theo timezone của region
+      const currentDate = getCurrentDateByRegion(region);
       const currentYear = currentDate.getFullYear();
       const currentMonth = currentDate.getMonth(); // 0-11
 
       // Tính timestamp cho ngày đầu tiên của tháng hiện tại
       const firstDayOfMonth = startOfMonth(new Date(currentYear, currentMonth));
-      const firstDayTimestamp = toUnixTimestamp(firstDayOfMonth);
+      const firstDayTimestamp = toUnixTimestampByRegion(
+        firstDayOfMonth,
+        region,
+      );
 
       // Tính timestamp cho ngày 15 của tháng hiện tại
       const day15OfMonth = endOfDay(
         setDate(new Date(currentYear, currentMonth), 15),
       );
-      const day15Timestamp = toUnixTimestamp(day15OfMonth);
+      const day15Timestamp = toUnixTimestampByRegion(day15OfMonth, region);
 
       // Nếu ngày hiện tại lớn hơn ngày 15, sử dụng timestamp ngày 15
       // Nếu ngày hiện tại nhỏ hơn hoặc bằng ngày 15, sử dụng timestamp hiện tại
       const endTimestamp =
         currentDate.getDate() > 15
           ? day15Timestamp
-          : toUnixTimestamp(currentDate);
+          : toUnixTimestampByRegion(currentDate, region);
 
       console.log(
         `Đang lấy đơn hàng từ đầu tháng ${
           currentMonth + 1
-        }/${currentYear} đến ngày 15/${currentMonth + 1}/${currentYear}...`,
+        }/${currentYear} đến ngày 15/${currentMonth + 1}/${currentYear} cho region ${region || 'VN'}...`,
       );
+      console.log(`Timezone: ${getTimezoneByRegion(region)}`);
       console.log(`Timestamp: ${firstDayTimestamp} → ${endTimestamp}`);
 
       return await this.fetchOrdersWithPagination(
@@ -502,7 +523,11 @@ export class TiktokService {
     page_size = 100,
   ) {
     try {
-      const now = new Date();
+      // Lấy region từ options
+      const region = options.region;
+
+      // Lấy thời gian hiện tại theo timezone của region
+      const now = getCurrentDateByRegion(region);
       const currentYear = now.getFullYear();
       const currentMonth = now.getMonth(); // 0-11
 
@@ -511,25 +536,26 @@ export class TiktokService {
       const previousMonthYear =
         currentMonth === 0 ? currentYear - 1 : currentYear;
 
-      // Ngày 1 tháng trước theo giờ VN
+      // Ngày 1 tháng trước theo timezone của region
       const firstDayLocal = startOfMonth(
         new Date(previousMonthYear, previousMonth),
       );
-      const firstDayTimestamp = toUnixTimestamp(firstDayLocal);
+      const firstDayTimestamp = toUnixTimestampByRegion(firstDayLocal, region);
 
-      // Ngày 15 tháng này 23:59:59 giờ VN
+      // Ngày 15 tháng này 23:59:59 theo timezone của region
       const day15Local = endOfDay(
         setDate(new Date(currentYear, currentMonth), 15),
       );
-      const day15Timestamp = toUnixTimestamp(day15Local);
+      const day15Timestamp = toUnixTimestampByRegion(day15Local, region);
 
       // Log kiểm tra
       console.log(
         `Đang lấy đơn hàng từ ${format(firstDayLocal, 'dd/MM/yyyy')} đến ${format(
           day15Local,
           'dd/MM/yyyy',
-        )}`,
+        )} cho region ${region || 'VN'}`,
       );
+      console.log(`Timezone: ${getTimezoneByRegion(region)}`);
       console.log(`Timestamp: ${firstDayTimestamp} → ${day15Timestamp}`);
 
       return await this.fetchOrdersWithPagination(
@@ -549,23 +575,28 @@ export class TiktokService {
    */
   async fetchCurrentMonthAllOrders(options: CommonParams, page_size = 100) {
     try {
-      const now = new Date();
+      // Lấy region từ options
+      const region = options.region;
+
+      // Lấy thời gian hiện tại theo timezone của region
+      const now = getCurrentDateByRegion(region);
       const currentYear = now.getFullYear();
       const currentMonth = now.getMonth(); // 0-11
 
       // Ngày 1 của tháng hiện tại
       const firstDayLocal = startOfMonth(new Date(currentYear, currentMonth));
-      const firstDayTimestamp = toUnixTimestamp(firstDayLocal);
+      const firstDayTimestamp = toUnixTimestampByRegion(firstDayLocal, region);
 
-      // Thời điểm hiện tại
-      const nowTimestamp = toUnixTimestamp(now);
+      // Thời điểm hiện tại theo timezone của region
+      const nowTimestamp = toUnixTimestampByRegion(now, region);
 
       // Log kiểm tra
       console.log(
         `Đang lấy đơn hàng của tháng ${
           currentMonth + 1
-        }/${currentYear} (từ ngày 1 đến hiện tại)`,
+        }/${currentYear} (từ ngày 1 đến hiện tại) cho region ${region || 'VN'}`,
       );
+      console.log(`Timezone: ${getTimezoneByRegion(region)}`);
       console.log(`Timestamp: ${firstDayTimestamp} → ${nowTimestamp}`);
 
       return await this.fetchOrdersWithPagination(
@@ -590,15 +621,19 @@ export class TiktokService {
     page_size = 100,
   ) {
     try {
-      // Tính timestamp cho thời gian bắt đầu và kết thúc
-      const startTimestamp = toUnixTimestamp(startDate);
-      const endTimestamp = toUnixTimestamp(endDate);
+      // Lấy region từ options
+      const region = options.region;
+
+      // Tính timestamp cho thời gian bắt đầu và kết thúc theo timezone của region
+      const startTimestamp = toUnixTimestampByRegion(startDate, region);
+      const endTimestamp = toUnixTimestampByRegion(endDate, region);
 
       console.log(
         `Đang lấy đơn hàng từ ${startDate.toLocaleString(
           'vi-VN',
-        )} đến ${endDate.toLocaleString('vi-VN')}...`,
+        )} đến ${endDate.toLocaleString('vi-VN')} cho region ${region || 'VN'}...`,
       );
+      console.log(`Timezone: ${getTimezoneByRegion(region)}`);
       console.log(`Timestamp: ${startTimestamp} đến ${endTimestamp}`);
 
       return await this.fetchOrdersWithPagination(
