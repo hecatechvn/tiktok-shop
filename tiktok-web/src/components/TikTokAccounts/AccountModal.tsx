@@ -42,14 +42,15 @@ const AccountModal: React.FC<AccountModalProps> = ({
   
   const handleAuthorize = () => {
     try {
-      // Xác thực các trường form trước
-      form.validateFields(['appKey', 'appSecret', 'serviceId', 'shopName', 'email'])
+      // Xác thực các trường form trước (loại bỏ yêu cầu email)
+      form.validateFields(['appKey', 'appSecret', 'serviceId', 'shopName'])
         .then(values => {
           // Lưu dữ liệu tài khoản đang chờ xử lý vào localStorage
           const pendingAccountData = {
             ...values,
             id: editingId || undefined,
-            sheetEmails: [values.email]
+            // Chỉ thêm email vào sheetEmails nếu có email được nhập
+            sheetEmails: values.email ? [values.email] : undefined
           };
           
           localStorage.setItem('pendingTikTokAccount', JSON.stringify(pendingAccountData));
@@ -129,18 +130,17 @@ const AccountModal: React.FC<AccountModalProps> = ({
                     name="email"
                     label={
                       <span>
-                        <MailOutlined /> Email
+                        <MailOutlined /> Email (tùy chọn)
                       </span>
                     }
                     rules={[
                       {
-                        required: true,
                         type: "email",
                         message: "Vui lòng nhập email hợp lệ!",
                       },
                     ]}
                   >
-                    <Input placeholder="Nhập email của bạn" />
+                    <Input placeholder="Nhập email để chia sẻ báo cáo (tùy chọn)" />
                   </Form.Item>
                 </Col>
                 <Col span={isMobile ? 24 : 12}>
@@ -199,7 +199,15 @@ const AccountModal: React.FC<AccountModalProps> = ({
           
           <Alert
             className="mt-3"
-            message="Nhấn nút &quot;Ủy quyền với TikTok&quot; để tiếp tục. Bạn sẽ được chuyển hướng đến trang đăng nhập TikTok Shop."
+            message={
+              <div>
+                <div>Nhấn nút &quot;Ủy quyền với TikTok&quot; để tiếp tục. Bạn sẽ được chuyển hướng đến trang đăng nhập TikTok Shop.</div>
+                <div className="mt-2 text-sm">
+                  <strong>Lưu ý:</strong> Google Sheet báo cáo sẽ tự động được chia sẻ với email <code>automation@hecatech.vn</code>. 
+                  Nếu bạn muốn chia sẻ thêm với email khác, vui lòng nhập email ở trên.
+                </div>
+              </div>
+            }
             type="info"
             showIcon
           />

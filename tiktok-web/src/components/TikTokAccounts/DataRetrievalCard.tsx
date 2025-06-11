@@ -365,7 +365,7 @@ const DataRetrievalCard: React.FC<DataRetrievalCardProps> = ({
           >
             <Space direction="vertical" style={{ width: '100%' }}>
               <Alert
-                message="Email sẽ được sử dụng để chia sẻ báo cáo Google Sheets"
+                message="Mặc định đã share cho automation@hecatech.vn"
                 type="info"
                 showIcon
               />
