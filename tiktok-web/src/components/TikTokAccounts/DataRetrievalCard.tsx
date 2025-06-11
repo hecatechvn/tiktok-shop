@@ -461,7 +461,7 @@ const DataRetrievalCard: React.FC<DataRetrievalCardProps> = ({
                   block
                   style={{ marginBottom: 8 }}
                 >
-                  Cập nhật dữ liệu tháng hiện tại
+                  Cập nhật dữ liệu 15 ngày gần nhất
                 </Button>
                 
                 <Button
