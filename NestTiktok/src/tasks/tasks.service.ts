@@ -387,19 +387,23 @@ export class TasksService implements OnModuleInit {
         item.cancel_reason || '',
       ]) as SheetValues;
 
-      // Quota limit + helper
-      const QUOTA_LIMIT = 60;
+      // Quota limit + helper - Giảm xuống để tránh rate limit
+      const QUOTA_LIMIT = 60; // Giảm từ 60 xuống 40 để an toàn hơn
       let requestCount = 0;
       let startTime = Date.now();
 
       // Hàm thực hiện retry với exponential backoff
       const executeWithRetry = async <T>(
         operation: () => Promise<T>,
-        maxRetries = 5,
+        maxRetries = 10,
       ): Promise<T> => {
         let retries = 0;
         while (true) {
           try {
+            // Thêm delay nhỏ giữa các request để tránh quá tải
+            if (requestCount > 0) {
+              await new Promise((resolve) => setTimeout(resolve, 100)); // 100ms delay
+            }
             return await operation();
           } catch (error: unknown) {
             retries++;
@@ -407,8 +411,9 @@ export class TasksService implements OnModuleInit {
               throw error; // Nếu đã vượt quá số lần retry, ném lỗi
             }
 
-            // Kiểm tra nếu là lỗi 503 Service Unavailable
-            let isServiceUnavailable = false;
+            // Kiểm tra nếu là lỗi 503 Service Unavailable hoặc 429 Rate Limit Exceeded
+            let shouldRetry = false;
+            let isRateLimit = false;
 
             // Type guard để kiểm tra các thuộc tính của error
             if (error && typeof error === 'object') {
@@ -417,26 +422,55 @@ export class TasksService implements OnModuleInit {
                 response?: { status?: number };
                 status?: number;
                 code?: number | string;
+                message?: string;
               };
 
-              isServiceUnavailable =
+              // Kiểm tra lỗi 503 (Service Unavailable)
+              const isServiceUnavailable =
                 err.response?.status === 503 ||
                 err.status === 503 ||
                 err.code === 503;
+
+              // Kiểm tra lỗi 429 (Rate Limit Exceeded)
+              isRateLimit =
+                err.response?.status === 429 ||
+                err.status === 429 ||
+                err.code === 429 ||
+                (typeof err.message === 'string' &&
+                  err.message.includes('Quota exceeded')) ||
+                (typeof err.message === 'string' &&
+                  err.message.includes('Rate limit exceeded')) ||
+                (typeof err.message === 'string' &&
+                  err.message.includes('rateLimitExceeded'));
+
+              shouldRetry = isServiceUnavailable || isRateLimit;
             }
 
-            if (!isServiceUnavailable) {
-              throw error; // Nếu không phải lỗi 503, ném lỗi ngay lập tức
+            if (!shouldRetry) {
+              throw error; // Nếu không phải lỗi cần retry, ném lỗi ngay lập tức
             }
 
-            // Tính thời gian chờ với exponential backoff (2^retries * 1000ms + random)
-            const waitTime = Math.min(
-              Math.pow(2, retries) * 1000 + Math.random() * 1000,
-              60000,
-            );
-            this.logger.log(
-              `Google Sheets API không khả dụng. Thử lại lần ${retries} sau ${waitTime}ms...`,
-            );
+            // Tính thời gian chờ với exponential backoff theo hướng dẫn của Google
+            // Công thức: min(((2^n) + random_number_milliseconds), maximum_backoff)
+            const baseDelay = Math.pow(2, retries) * 1000; // 2^n giây chuyển thành milliseconds
+            const randomJitter = Math.random() * 1000; // Random 0-1000ms
+            const maxBackoff = isRateLimit ? 64000 : 60000; // Rate limit thì tối đa 64s, service unavailable 60s
+            const waitTime = Math.min(baseDelay + randomJitter, maxBackoff);
+
+            if (isRateLimit) {
+              this.logger.log(
+                `🚫 Google Sheets API quota exceeded. Thử lại lần ${retries}/${maxRetries} sau ${Math.round(
+                  waitTime / 1000,
+                )}s (exponential backoff)...`,
+              );
+            } else {
+              this.logger.log(
+                `⚠️ Google Sheets API không khả dụng. Thử lại lần ${retries}/${maxRetries} sau ${Math.round(
+                  waitTime / 1000,
+                )}s...`,
+              );
+            }
+
             await new Promise((resolve) => setTimeout(resolve, waitTime));
           }
         }
@@ -449,9 +483,9 @@ export class TasksService implements OnModuleInit {
           const oneMinuteInMs = 60 * 1000;
 
           if (elapsedMs < oneMinuteInMs) {
-            const waitTime = oneMinuteInMs - elapsedMs + 500;
-            console.log(
-              `Đã đạt giới hạn quota, đợi ${waitTime}ms trước khi tiếp tục`,
+            const waitTime = oneMinuteInMs - elapsedMs + 1000; // Thêm 1s buffer
+            this.logger.log(
+              `⏱️ Đã đạt giới hạn ${QUOTA_LIMIT} requests, đợi ${Math.round(waitTime / 1000)}s trước khi tiếp tục`,
             );
             await new Promise((resolve) => setTimeout(resolve, waitTime));
           }

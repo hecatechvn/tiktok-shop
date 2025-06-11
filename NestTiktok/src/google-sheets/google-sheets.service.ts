@@ -49,6 +49,89 @@ export class GoogleSheetsService {
   }
 
   /**
+   * Utility method để xử lý retry với exponential backoff cho Google API calls
+   */
+  private async executeWithRetry<T>(
+    operation: () => Promise<T>,
+    maxRetries = 5,
+  ): Promise<T> {
+    let retries = 0;
+    while (true) {
+      try {
+        return await operation();
+      } catch (error: unknown) {
+        retries++;
+        if (retries > maxRetries) {
+          this.logger.error(
+            `❌ Đã vượt quá số lần retry (${maxRetries}), ném lỗi:`,
+            error,
+          );
+          throw error;
+        }
+
+        // Kiểm tra nếu là lỗi cần retry
+        let shouldRetry = false;
+        let isRateLimit = false;
+
+        if (error && typeof error === 'object') {
+          const err = error as {
+            response?: { status?: number };
+            status?: number;
+            code?: number | string;
+            message?: string;
+          };
+
+          // Kiểm tra lỗi 503 (Service Unavailable)
+          const isServiceUnavailable =
+            err.response?.status === 503 ||
+            err.status === 503 ||
+            err.code === 503;
+
+          // Kiểm tra lỗi 429 (Rate Limit Exceeded)
+          isRateLimit =
+            err.response?.status === 429 ||
+            err.status === 429 ||
+            err.code === 429 ||
+            (typeof err.message === 'string' &&
+              err.message.includes('Quota exceeded')) ||
+            (typeof err.message === 'string' &&
+              err.message.includes('Rate limit exceeded')) ||
+            (typeof err.message === 'string' &&
+              err.message.includes('rateLimitExceeded'));
+
+          shouldRetry = isServiceUnavailable || isRateLimit;
+        }
+
+        if (!shouldRetry) {
+          throw error; // Nếu không phải lỗi cần retry, ném lỗi ngay
+        }
+
+        // Exponential backoff theo hướng dẫn của Google
+        const baseDelay = Math.pow(2, retries) * 1000;
+        const randomJitter = Math.random() * 1000;
+        const maxBackoff = isRateLimit ? 64000 : 60000;
+        const waitTime = Math.min(baseDelay + randomJitter, maxBackoff);
+
+        if (isRateLimit) {
+          this.logger.warn(
+            `🚫 Google Sheets quota exceeded. Retry ${retries}/${maxRetries} sau ${Math.round(
+              waitTime / 1000,
+            )}s...`,
+          );
+        } else {
+          this.logger.warn(
+            `⚠️ Google Sheets service unavailable. Retry ${retries}/${maxRetries} sau ${Math.round(
+              waitTime / 1000,
+            )}s...`,
+          );
+        }
+
+        await new Promise((resolve) => setTimeout(resolve, waitTime));
+      }
+    }
+  }
+
+  /**
    * Tạo và trả về một client API Google Sheets
    * @returns Promise với client Sheets đã được xác thực
    */
@@ -80,16 +163,18 @@ export class GoogleSheetsService {
     range,
     values,
   }: WriteToSheetParams): Promise<any> {
-    const sheets = await this.getSheetsClient();
-
-    const res = await sheets.spreadsheets.values.update({
-      spreadsheetId,
-      range,
-      valueInputOption: 'USER_ENTERED',
-      requestBody: { values },
+    return this.executeWithRetry(async () => {
+      const sheets = await this.getSheetsClient();
+      const res = await sheets.spreadsheets.values.update({
+        spreadsheetId,
+        range,
+        valueInputOption: 'USER_ENTERED',
+        requestBody: {
+          values,
+        },
+      });
+      return res.data;
     });
-
-    return res.data;
   }
 
   /**
@@ -127,14 +212,14 @@ export class GoogleSheetsService {
     spreadsheetId,
     range,
   }: ReadSheetParams): Promise<SheetValues> {
-    const sheets = await this.getSheetsClient();
-
-    const res = await sheets.spreadsheets.values.get({
-      spreadsheetId,
-      range,
+    return this.executeWithRetry(async () => {
+      const sheets = await this.getSheetsClient();
+      const res = await sheets.spreadsheets.values.get({
+        spreadsheetId,
+        range,
+      });
+      return (res.data.values || []) as SheetValues;
     });
-
-    return res.data.values ?? [];
   }
 
   /**
@@ -147,15 +232,18 @@ export class GoogleSheetsService {
     spreadsheetId: string,
     sheetTitle: string,
   ): Promise<boolean> {
-    const sheets = await this.getSheetsClient();
+    return this.executeWithRetry(async () => {
+      const sheets = await this.getSheetsClient();
+      const res = await sheets.spreadsheets.get({
+        spreadsheetId,
+        fields: 'sheets.properties.title',
+      });
 
-    const res = await sheets.spreadsheets.get({
-      spreadsheetId,
-      fields: 'sheets.properties.title',
+      const sheetTitles = res.data.sheets?.map(
+        (sheet) => sheet.properties?.title,
+      );
+      return sheetTitles?.includes(sheetTitle) ?? false;
     });
-
-    const sheetTitles = res.data.sheets?.map((s) => s.properties?.title) ?? [];
-    return sheetTitles.includes(sheetTitle);
   }
 
   /**
@@ -171,30 +259,32 @@ export class GoogleSheetsService {
       return { exists: true };
     }
 
-    const sheets = await this.getSheetsClient();
+    return this.executeWithRetry(async () => {
+      const sheets = await this.getSheetsClient();
 
-    const request: sheets_v4.Params$Resource$Spreadsheets$Batchupdate = {
-      spreadsheetId,
-      requestBody: {
-        requests: [
-          {
-            addSheet: {
-              properties: {
-                title: sheetTitle,
-                gridProperties: {
-                  rowCount: 1000,
-                  columnCount: 26,
+      const request: sheets_v4.Params$Resource$Spreadsheets$Batchupdate = {
+        spreadsheetId,
+        requestBody: {
+          requests: [
+            {
+              addSheet: {
+                properties: {
+                  title: sheetTitle,
+                  gridProperties: {
+                    rowCount: 1000,
+                    columnCount: 26,
+                  },
                 },
               },
             },
-          },
-        ],
-      },
-    };
+          ],
+        },
+      };
 
-    const res = await sheets.spreadsheets.batchUpdate(request);
-    this.logger.log(`Added sheet "${sheetTitle}"`);
-    return res.data;
+      const res = await sheets.spreadsheets.batchUpdate(request);
+      this.logger.log(`Added sheet "${sheetTitle}"`);
+      return res.data;
+    });
   }
 
   /**
@@ -339,123 +429,129 @@ export class GoogleSheetsService {
     }
 
     // Bước 1: Đầu tiên định dạng TẤT CẢ các ô với định dạng cơ bản (không in đậm, nền trắng)
-    await sheets.spreadsheets.batchUpdate({
-      spreadsheetId,
-      requestBody: {
-        requests: [
-          // Định dạng cơ bản cho tất cả các ô (bao gồm cả header)
-          {
-            repeatCell: {
-              range: {
-                sheetId,
-                startRowIndex: 0,
-                endRowIndex: totalRows,
-                startColumnIndex: 0,
-                endColumnIndex: 24,
-              },
-              cell: {
-                userEnteredFormat: {
-                  horizontalAlignment: 'CENTER',
-                  verticalAlignment: 'MIDDLE',
-                  wrapStrategy: 'OVERFLOW_CELL',
-                  backgroundColor: {
-                    red: 1,
-                    green: 1,
-                    blue: 1,
-                  },
-                  textFormat: {
-                    bold: false,
-                    fontSize: 10,
-                  },
-                  padding: {
-                    left: 10,
-                    right: 10,
-                    top: 2,
-                    bottom: 2,
+    await this.executeWithRetry(async () => {
+      return sheets.spreadsheets.batchUpdate({
+        spreadsheetId,
+        requestBody: {
+          requests: [
+            // Định dạng cơ bản cho tất cả các ô (bao gồm cả header)
+            {
+              repeatCell: {
+                range: {
+                  sheetId,
+                  startRowIndex: 0,
+                  endRowIndex: totalRows,
+                  startColumnIndex: 0,
+                  endColumnIndex: 24,
+                },
+                cell: {
+                  userEnteredFormat: {
+                    horizontalAlignment: 'CENTER',
+                    verticalAlignment: 'MIDDLE',
+                    wrapStrategy: 'OVERFLOW_CELL',
+                    backgroundColor: {
+                      red: 1,
+                      green: 1,
+                      blue: 1,
+                    },
+                    textFormat: {
+                      bold: false,
+                      fontSize: 10,
+                    },
+                    padding: {
+                      left: 10,
+                      right: 10,
+                      top: 2,
+                      bottom: 2,
+                    },
                   },
                 },
+                fields:
+                  'userEnteredFormat.horizontalAlignment,userEnteredFormat.verticalAlignment,userEnteredFormat.wrapStrategy,userEnteredFormat.backgroundColor,userEnteredFormat.textFormat,userEnteredFormat.padding',
               },
-              fields:
-                'userEnteredFormat.horizontalAlignment,userEnteredFormat.verticalAlignment,userEnteredFormat.wrapStrategy,userEnteredFormat.backgroundColor,userEnteredFormat.textFormat,userEnteredFormat.padding',
             },
-          },
-        ],
-      },
+          ],
+        },
+      });
     });
 
     // Bước 2: Sau đó mới định dạng riêng cho header
-    await sheets.spreadsheets.batchUpdate({
-      spreadsheetId,
-      requestBody: {
-        requests: [
-          // Định dạng đặc biệt cho header
-          {
-            repeatCell: {
-              range: {
-                sheetId,
-                startRowIndex: 0,
-                endRowIndex: 1,
-                startColumnIndex: 0,
-                endColumnIndex: 24,
-              },
-              cell: {
-                userEnteredFormat: {
-                  backgroundColor: {
-                    red: 0.9,
-                    green: 0.9,
-                    blue: 0.9,
-                  },
-                  textFormat: {
-                    bold: true,
-                    fontSize: 12,
-                  },
-                  padding: {
-                    left: 10,
-                    right: 10,
-                    top: 2,
-                    bottom: 2,
+    await this.executeWithRetry(async () => {
+      return sheets.spreadsheets.batchUpdate({
+        spreadsheetId,
+        requestBody: {
+          requests: [
+            // Định dạng đặc biệt cho header
+            {
+              repeatCell: {
+                range: {
+                  sheetId,
+                  startRowIndex: 0,
+                  endRowIndex: 1,
+                  startColumnIndex: 0,
+                  endColumnIndex: 24,
+                },
+                cell: {
+                  userEnteredFormat: {
+                    backgroundColor: {
+                      red: 0.9,
+                      green: 0.9,
+                      blue: 0.9,
+                    },
+                    textFormat: {
+                      bold: true,
+                      fontSize: 12,
+                    },
+                    padding: {
+                      left: 10,
+                      right: 10,
+                      top: 2,
+                      bottom: 2,
+                    },
                   },
                 },
+                fields:
+                  'userEnteredFormat.backgroundColor,userEnteredFormat.textFormat,userEnteredFormat.padding',
               },
-              fields:
-                'userEnteredFormat.backgroundColor,userEnteredFormat.textFormat,userEnteredFormat.padding',
             },
-          },
-          // Cố định cột đầu tiên và header
-          {
-            updateSheetProperties: {
-              properties: {
-                sheetId,
-                gridProperties: {
-                  frozenColumnCount: 1,
-                  frozenRowCount: 1,
+            // Cố định cột đầu tiên và header
+            {
+              updateSheetProperties: {
+                properties: {
+                  sheetId,
+                  gridProperties: {
+                    frozenColumnCount: 1,
+                    frozenRowCount: 1,
+                  },
                 },
+                fields:
+                  'gridProperties.frozenColumnCount,gridProperties.frozenRowCount',
               },
-              fields:
-                'gridProperties.frozenColumnCount,gridProperties.frozenRowCount',
             },
-          },
-        ],
-      },
+          ],
+        },
+      });
     });
 
     // Tự động điều chỉnh chiều rộng các cột
-    await sheets.spreadsheets.batchUpdate({
-      spreadsheetId,
-      requestBody: {
-        requests: [
-          {
-            autoResizeDimensions: {
-              dimensions: {
-                sheetId,
-                dimension: 'COLUMNS',
-                startIndex: 0,
-                endIndex: 24,
+    await this.executeWithRetry(async () => {
+      return sheets.spreadsheets.batchUpdate({
+        spreadsheetId,
+        requestBody: {
+          requests: [
+            {
+              autoResizeDimensions: {
+                dimensions: {
+                  sheetId,
+                  dimension: 'COLUMNS',
+                  startIndex: 0,
+                  endIndex: 24,
+                },
               },
             },
-          },
-        ],
-      },
+          ],
+        },
+      });
     });
 
     this.logger.log(
@@ -474,16 +570,18 @@ export class GoogleSheetsService {
     spreadsheetId: string,
     sheetName: string,
   ): Promise<number | null> {
-    const sheets = await this.getSheetsClient();
-    const response = await sheets.spreadsheets.get({
-      spreadsheetId,
-      fields: 'sheets.properties',
-    });
+    return this.executeWithRetry(async () => {
+      const sheets = await this.getSheetsClient();
+      const response = await sheets.spreadsheets.get({
+        spreadsheetId,
+        fields: 'sheets.properties',
+      });
 
-    const sheet = response.data.sheets?.find(
-      (s) => s.properties?.title === sheetName,
-    );
-    return sheet?.properties?.sheetId || null;
+      const sheet = response.data.sheets?.find(
+        (s) => s.properties?.title === sheetName,
+      );
+      return sheet?.properties?.sheetId || null;
+    });
   }
 
   /**
@@ -493,8 +591,6 @@ export class GoogleSheetsService {
    * @returns Promise hoàn thành khi việc xóa hoàn tất
    */
   async clearSheetData(spreadsheetId: string, sheetName: string): Promise<any> {
-    const sheets = await this.getSheetsClient();
-
     // Đọc dữ liệu để xác định số lượng hàng
     const data = await this.readSheet({
       spreadsheetId,
@@ -510,9 +606,12 @@ export class GoogleSheetsService {
     }
 
     // Xóa tất cả dữ liệu từ hàng 2 trở đi (giữ lại header)
-    return sheets.spreadsheets.values.clear({
-      spreadsheetId,
-      range: `${sheetName}!A2:Z${data.length}`,
+    return this.executeWithRetry(async () => {
+      const sheets = await this.getSheetsClient();
+      return sheets.spreadsheets.values.clear({
+        spreadsheetId,
+        range: `${sheetName}!A2:Z${data.length}`,
+      });
     });
   }
 
@@ -530,7 +629,6 @@ export class GoogleSheetsService {
     startRow: number,
     numRows: number,
   ): Promise<any> {
-    const sheets = await this.getSheetsClient();
     const sheetId = await this.getSheetId(spreadsheetId, sheetName);
 
     if (sheetId === null) {
@@ -542,77 +640,80 @@ export class GoogleSheetsService {
 
     // Thiết lập định dạng cho vùng dữ liệu (không in đậm, nền trắng, cỡ chữ 10)
     // Sử dụng userEnteredFormat thay vì các trường riêng lẻ
-    await sheets.spreadsheets.batchUpdate({
-      spreadsheetId,
-      requestBody: {
-        requests: [
-          {
-            repeatCell: {
-              range: {
-                sheetId,
-                startRowIndex: startRow,
-                endRowIndex: endRow,
-                startColumnIndex: 0,
-                endColumnIndex: 24,
-              },
-              cell: {
-                userEnteredFormat: {
-                  textFormat: {
-                    bold: false,
-                    fontSize: 10,
-                  },
-                  backgroundColor: {
-                    red: 1,
-                    green: 1,
-                    blue: 1,
-                  },
-                  horizontalAlignment: 'CENTER',
-                  verticalAlignment: 'MIDDLE',
-                  // Thiết lập tất cả các thuộc tính định dạng khác về mặc định
-                  numberFormat: {
-                    type: 'TEXT',
-                  },
-                  borders: {
-                    top: {
-                      style: 'SOLID',
-                      color: {
-                        red: 0.9,
-                        green: 0.9,
-                        blue: 0.9,
-                      },
+    await this.executeWithRetry(async () => {
+      const sheets = await this.getSheetsClient();
+      return sheets.spreadsheets.batchUpdate({
+        spreadsheetId,
+        requestBody: {
+          requests: [
+            {
+              repeatCell: {
+                range: {
+                  sheetId,
+                  startRowIndex: startRow,
+                  endRowIndex: endRow,
+                  startColumnIndex: 0,
+                  endColumnIndex: 24,
+                },
+                cell: {
+                  userEnteredFormat: {
+                    textFormat: {
+                      bold: false,
+                      fontSize: 10,
                     },
-                    bottom: {
-                      style: 'SOLID',
-                      color: {
-                        red: 0.9,
-                        green: 0.9,
-                        blue: 0.9,
-                      },
+                    backgroundColor: {
+                      red: 1,
+                      green: 1,
+                      blue: 1,
                     },
-                    left: {
-                      style: 'SOLID',
-                      color: {
-                        red: 0.9,
-                        green: 0.9,
-                        blue: 0.9,
-                      },
+                    horizontalAlignment: 'CENTER',
+                    verticalAlignment: 'MIDDLE',
+                    // Thiết lập tất cả các thuộc tính định dạng khác về mặc định
+                    numberFormat: {
+                      type: 'TEXT',
                     },
-                    right: {
-                      style: 'SOLID',
-                      color: {
-                        red: 0.9,
-                        green: 0.9,
-                        blue: 0.9,
+                    borders: {
+                      top: {
+                        style: 'SOLID',
+                        color: {
+                          red: 0.9,
+                          green: 0.9,
+                          blue: 0.9,
+                        },
+                      },
+                      bottom: {
+                        style: 'SOLID',
+                        color: {
+                          red: 0.9,
+                          green: 0.9,
+                          blue: 0.9,
+                        },
+                      },
+                      left: {
+                        style: 'SOLID',
+                        color: {
+                          red: 0.9,
+                          green: 0.9,
+                          blue: 0.9,
+                        },
+                      },
+                      right: {
+                        style: 'SOLID',
+                        color: {
+                          red: 0.9,
+                          green: 0.9,
+                          blue: 0.9,
+                        },
                       },
                     },
                   },
                 },
+                fields: 'userEnteredFormat',
               },
-              fields: 'userEnteredFormat',
             },
-          },
-        ],
-      },
+          ],
+        },
+      });
     });
 
     this.logger.log(

@@ -124,13 +124,13 @@ export class TiktokService {
       }
 
       const { app_key, shop_cipher, access_token, page_size } = data;
-      // Thiết lập các tùy chọn request
+      // Thiết lập các tùy chọn request với page_size tối đa để giảm số lần gọi API
       const requestOption: RequestOption = {
         uri: 'https://open-api.tiktokglobalshop.com/order/202309/orders/search',
         qs: {
           app_key: app_key,
           shop_cipher: shop_cipher,
-          page_size: page_size || 100,
+          page_size: page_size || 100, // Sử dụng page_size tối đa
         },
         headers: {
           'x-tts-access-token': access_token,
@@ -151,15 +151,13 @@ export class TiktokService {
         requestOption.qs.page_token = data.query_params?.page_token;
       }
 
-      // Thêm các tham số body để lọc
+      // Thêm các tham số body để lọc - sử dụng create_time_lt thay vì create_time_le để tối ưu hơn
       const bodyParams = [
         'order_status',
         'create_time_ge',
-        'create_time_le',
-        'create_time_lt',
+        'create_time_lt', // Thay đổi từ create_time_le thành create_time_lt
         'update_time_ge',
-        'update_time_le',
-        'update_time_lt',
+        'update_time_lt', // Thay đổi từ update_time_le thành update_time_lt
         'shipping_type',
         'buyer_user_id',
         'is_buyer_request_cancel',
@@ -189,11 +187,12 @@ export class TiktokService {
   }
 
   /**
-   * Hàm helper để lấy đơn hàng với phân trang
+   * Hàm helper được tối ưu để lấy đơn hàng với phân trang nhanh hơn
    * @param options Tùy chọn API
    * @param startTimestamp Thời gian bắt đầu (Unix timestamp)
    * @param endTimestamp Thời gian kết thúc (Unix timestamp)
    * @param page_size Kích thước trang
+   * @param sortOrder Thứ tự sắp xếp (DESC cho đơn hàng mới nhất, ASC cho đơn hàng cũ nhất)
    * @returns Danh sách đơn hàng đã xử lý
    */
   private async fetchOrdersWithPagination(
@@ -201,24 +200,33 @@ export class TiktokService {
     startTimestamp: number,
     endTimestamp: number,
     page_size = 100,
+    sortOrder: 'ASC' | 'DESC' = 'DESC', // Mặc định DESC để lấy đơn mới nhất trước
   ): Promise<ExtractedOrderItem[]> {
     // Mảng lưu trữ tất cả các đơn hàng
     let allOrders: Order[] = [];
     let hasMoreData = true;
     let nextPageToken = '';
     let totalCount = 0;
+    let requestCount = 0;
+    const maxRequests = 50; // Giới hạn số request để tránh timeout
+
+    console.log(
+      `🚀 Bắt đầu lấy đơn hàng (${sortOrder}) từ ${new Date(startTimestamp * 1000).toLocaleString()} đến ${new Date(endTimestamp * 1000).toLocaleString()}`,
+    );
 
     // Lấy tất cả các trang dữ liệu
-    while (hasMoreData) {
+    while (hasMoreData && requestCount < maxRequests) {
+      requestCount++;
+
       // Cập nhật tùy chọn với page_token nếu có
       const requestOptions: CommonParams = {
         ...options,
         query_params: {
           page_size,
           create_time_ge: startTimestamp,
-          create_time_le: endTimestamp,
+          create_time_lt: endTimestamp, // Sử dụng create_time_lt thay vì create_time_le
           sort_field: 'create_time',
-          sort_order: 'ASC',
+          sort_order: sortOrder,
         },
       };
 
@@ -227,52 +235,235 @@ export class TiktokService {
         requestOptions.query_params.page_token = nextPageToken;
       }
 
-      const result = await this.getOrderList(requestOptions);
+      try {
+        const result = await this.getOrderList(requestOptions);
 
-      // Lưu tổng số lượng đơn hàng nếu là lần đầu
-      if (totalCount === 0 && result.data?.total_count) {
-        totalCount = result.data.total_count;
-      }
+        // Lưu tổng số lượng đơn hàng nếu là lần đầu
+        if (totalCount === 0 && result.data?.total_count) {
+          totalCount = result.data.total_count;
+        }
 
-      // Thêm đơn hàng vào mảng kết quả
-      if (result.data?.orders && Array.isArray(result.data.orders)) {
-        allOrders = [...allOrders, ...result.data.orders];
-      }
+        // Thêm đơn hàng vào mảng kết quả
+        if (result.data?.orders && Array.isArray(result.data.orders)) {
+          allOrders = [...allOrders, ...result.data.orders];
+        }
 
-      // Kiểm tra có trang tiếp theo không
-      if (result.data?.next_page_token) {
-        nextPageToken = result.data.next_page_token;
-        console.log(
-          `Đã lấy ${allOrders.length}/${totalCount || '?'} đơn hàng, tiếp tục...`,
-        );
-      } else {
-        hasMoreData = false;
+        // Kiểm tra có trang tiếp theo không
+        if (result.data?.next_page_token) {
+          nextPageToken = result.data.next_page_token;
+          console.log(
+            `📦 Đã lấy ${allOrders.length}/${totalCount || '?'} đơn hàng (Request #${requestCount})`,
+          );
+        } else {
+          hasMoreData = false;
+        }
+
+        // Tối ưu: Nếu đã lấy đủ đơn hàng trong khoảng thời gian, có thể dừng sớm
+        if (allOrders.length > 0) {
+          const lastOrder = allOrders[allOrders.length - 1];
+          if (sortOrder === 'DESC' && lastOrder.create_time < startTimestamp) {
+            console.log(
+              '⚡ Tối ưu: Dừng sớm vì đã vượt qua khoảng thời gian yêu cầu',
+            );
+            break;
+          }
+          if (sortOrder === 'ASC' && lastOrder.create_time > endTimestamp) {
+            console.log(
+              '⚡ Tối ưu: Dừng sớm vì đã vượt qua khoảng thời gian yêu cầu',
+            );
+            break;
+          }
+        }
+      } catch (error) {
+        console.error(`❌ Lỗi tại request #${requestCount}:`, error);
+        break;
       }
     }
 
-    // Lọc đơn hàng theo khoảng thời gian
+    if (requestCount >= maxRequests) {
+      console.log(
+        `⚠️ Đã đạt giới hạn ${maxRequests} requests, dừng lại để tránh timeout`,
+      );
+    }
+
+    // Lọc đơn hàng theo khoảng thời gian (chỉ cần thiết nếu API trả về đơn hàng ngoài khoảng)
     const validOrders = allOrders.filter((order) => {
       return (
-        order.create_time >= startTimestamp && order.create_time <= endTimestamp
+        order.create_time >= startTimestamp && order.create_time < endTimestamp
       );
     });
 
     if (validOrders.length < allOrders.length) {
       console.log(
-        `⚠️ Đã lọc bỏ ${
+        `🔍 Đã lọc bỏ ${
           allOrders.length - validOrders.length
         } đơn hàng nằm ngoài khoảng thời gian yêu cầu.`,
       );
     }
 
-    console.log(`✅ Đã lấy tổng cộng ${validOrders.length} đơn hàng.`);
+    console.log(
+      `✅ Hoàn thành: ${validOrders.length} đơn hàng trong ${requestCount} requests`,
+    );
 
     let region: string | undefined;
     if (options.region) {
       region = options.region;
     }
 
-    return extractOrderData(validOrders, region);
+    const extractedData = extractOrderData(validOrders, region);
+
+    // 🎯 Đảm bảo sắp xếp cuối cùng từ cũ đến mới (đơn cũ ở trên, mới chèn xuống dưới)
+    extractedData.sort((a, b) => {
+      if (!a.created_time) return -1;
+      if (!b.created_time) return 1;
+
+      // Chuyển đổi định dạng DD/MM/YYYY HH:mm:ss thành timestamp để so sánh
+      const parseDateTime = (dateTimeStr: string) => {
+        // Format: DD/MM/YYYY HH:mm:ss
+        const [datePart, timePart] = dateTimeStr.split(' ');
+        if (!datePart) return 0;
+
+        const [day, month, year] = datePart.split('/').map(Number);
+        if (timePart) {
+          const [hour, minute, second] = timePart.split(':').map(Number);
+          return new Date(
+            year,
+            month - 1,
+            day,
+            hour || 0,
+            minute || 0,
+            second || 0,
+          ).getTime();
+        } else {
+          return new Date(year, month - 1, day).getTime();
+        }
+      };
+
+      const timeA = parseDateTime(a.created_time);
+      const timeB = parseDateTime(b.created_time);
+      return timeA - timeB; // Sắp xếp từ cũ đến mới
+    });
+
+    return extractedData;
+  }
+
+  /**
+   * Phương thức mới: Lấy đơn hàng với chiến lược song song để tăng tốc
+   */
+  private async fetchOrdersParallel(
+    options: CommonParams,
+    startTimestamp: number,
+    endTimestamp: number,
+    page_size = 100,
+  ): Promise<ExtractedOrderItem[]> {
+    // Chia khoảng thời gian thành các chunk nhỏ hơn để xử lý song song
+    const timeRange = endTimestamp - startTimestamp;
+    const maxChunkSize = 7 * 24 * 60 * 60; // 7 ngày
+
+    if (timeRange <= maxChunkSize) {
+      // Nếu khoảng thời gian nhỏ, sử dụng phương thức thông thường
+      return this.fetchOrdersWithPagination(
+        options,
+        startTimestamp,
+        endTimestamp,
+        page_size,
+        'DESC',
+      );
+    }
+
+    // Chia thành các chunk
+    const chunks: Array<{ start: number; end: number }> = [];
+    let currentStart = startTimestamp;
+
+    while (currentStart < endTimestamp) {
+      const currentEnd = Math.min(currentStart + maxChunkSize, endTimestamp);
+      chunks.push({ start: currentStart, end: currentEnd });
+      currentStart = currentEnd;
+    }
+
+    console.log(`🔀 Chia thành ${chunks.length} chunks để xử lý song song`);
+
+    // Xử lý song song các chunk (giới hạn 3 chunk cùng lúc để tránh rate limit)
+    const maxConcurrent = 3;
+    const allResults: ExtractedOrderItem[] = [];
+
+    for (let i = 0; i < chunks.length; i += maxConcurrent) {
+      const currentChunks = chunks.slice(i, i + maxConcurrent);
+
+      const promises = currentChunks.map((chunk) =>
+        this.fetchOrdersWithPagination(
+          options,
+          chunk.start,
+          chunk.end,
+          page_size,
+          'DESC',
+        ),
+      );
+
+      try {
+        const results = await Promise.all(promises);
+        results.forEach((result) => allResults.push(...result));
+      } catch (error) {
+        console.error('❌ Lỗi khi xử lý song song:', error);
+        // Fallback: xử lý tuần tự
+        for (const chunk of currentChunks) {
+          try {
+            const result = await this.fetchOrdersWithPagination(
+              options,
+              chunk.start,
+              chunk.end,
+              page_size,
+              'DESC',
+            );
+            allResults.push(...result);
+          } catch (chunkError) {
+            console.error('❌ Lỗi khi xử lý chunk:', chunkError);
+          }
+        }
+      }
+    }
+
+    console.log(
+      `📊 Tổng cộng đã lấy ${allResults.length} đơn hàng từ ${chunks.length} chunks`,
+    );
+
+    // 🎯 BƯỚC QUAN TRỌNG: Sắp xếp lại toàn bộ kết quả theo thời gian tạo từ cũ đến mới
+    allResults.sort((a, b) => {
+      if (!a.created_time) return -1;
+      if (!b.created_time) return 1;
+
+      // Chuyển đổi định dạng DD/MM/YYYY HH:mm:ss thành timestamp để so sánh
+      const parseDateTime = (dateTimeStr: string) => {
+        // Format: DD/MM/YYYY HH:mm:ss
+        const [datePart, timePart] = dateTimeStr.split(' ');
+        if (!datePart) return 0;
+
+        const [day, month, year] = datePart.split('/').map(Number);
+        if (timePart) {
+          const [hour, minute, second] = timePart.split(':').map(Number);
+          return new Date(
+            year,
+            month - 1,
+            day,
+            hour || 0,
+            minute || 0,
+            second || 0,
+          ).getTime();
+        } else {
+          return new Date(year, month - 1, day).getTime();
+        }
+      };
+
+      const timeA = parseDateTime(a.created_time);
+      const timeB = parseDateTime(b.created_time);
+      return timeA - timeB; // Sắp xếp từ cũ đến mới (đơn cũ ở trên, mới chèn xuống dưới)
+    });
+
+    console.log(
+      `✅ Đã sắp xếp lại ${allResults.length} đơn hàng theo thứ tự từ cũ đến mới`,
+    );
+
+    return allResults;
   }
 
   /**
@@ -426,7 +617,7 @@ export class TiktokService {
   }
 
   /**
-   * Lấy đơn hàng trong khoảng ngày gần đây
+   * Lấy đơn hàng trong khoảng ngày gần đây - ĐƯỢC TỐI ƯU
    */
   async fetchOrdersByDateRange(
     options: CommonParams,
@@ -445,17 +636,28 @@ export class TiktokService {
       const endTimestamp = toUnixTimestampByRegion(endDate, region);
 
       console.log(
-        `Đang lấy đơn hàng trong ${daysAgo} ngày gần nhất cho region ${region || 'VN'}...`,
+        `🚀 Tối ưu: Lấy đơn hàng trong ${daysAgo} ngày gần nhất cho region ${region || 'VN'}...`,
       );
       console.log(`Timezone: ${getTimezoneByRegion(region)}`);
       console.log(`Timestamp: ${startTimestamp} → ${endTimestamp}`);
 
-      return await this.fetchOrdersWithPagination(
-        options,
-        startTimestamp,
-        endTimestamp,
-        page_size,
-      );
+      // Sử dụng phương thức song song nếu khoảng thời gian lớn
+      if (daysAgo > 7) {
+        return await this.fetchOrdersParallel(
+          options,
+          startTimestamp,
+          endTimestamp,
+          page_size,
+        );
+      } else {
+        return await this.fetchOrdersWithPagination(
+          options,
+          startTimestamp,
+          endTimestamp,
+          page_size,
+          'DESC', // Lấy đơn hàng mới nhất trước
+        );
+      }
     } catch (error) {
       console.error('❌ Lỗi khi lấy đơn hàng:', error);
       return [];
@@ -463,7 +665,7 @@ export class TiktokService {
   }
 
   /**
-   * Lấy đơn hàng từ đầu tháng đến ngày 15 của tháng hiện tại
+   * Lấy đơn hàng từ đầu tháng đến ngày 15 của tháng hiện tại - ĐƯỢC TỐI ƯU
    */
   async fetchCurrentMonthOrders(options: CommonParams, page_size = 100) {
     try {
@@ -496,7 +698,7 @@ export class TiktokService {
           : toUnixTimestampByRegion(currentDate, region);
 
       console.log(
-        `Đang lấy đơn hàng từ đầu tháng ${
+        `🚀 Tối ưu: Lấy đơn hàng từ đầu tháng ${
           currentMonth + 1
         }/${currentYear} đến ngày 15/${currentMonth + 1}/${currentYear} cho region ${region || 'VN'}...`,
       );
@@ -508,6 +710,7 @@ export class TiktokService {
         firstDayTimestamp,
         endTimestamp,
         page_size,
+        'DESC', // Lấy đơn hàng mới nhất trước
       );
     } catch (error) {
       console.error('❌ Lỗi khi lấy đơn hàng đầu tháng:', error);
@@ -516,7 +719,7 @@ export class TiktokService {
   }
 
   /**
-   * Lấy đơn hàng từ đầu tháng trước đến ngày 15 của tháng hiện tại
+   * Lấy đơn hàng từ đầu tháng trước đến ngày 15 của tháng hiện tại - ĐƯỢC TỐI ƯU
    */
   async fetchPreviousToCurrentMonthOrders(
     options: CommonParams,
@@ -550,7 +753,7 @@ export class TiktokService {
 
       // Log kiểm tra
       console.log(
-        `Đang lấy đơn hàng từ ${format(firstDayLocal, 'dd/MM/yyyy')} đến ${format(
+        `🚀 Tối ưu: Lấy đơn hàng từ ${format(firstDayLocal, 'dd/MM/yyyy')} đến ${format(
           day15Local,
           'dd/MM/yyyy',
         )} cho region ${region || 'VN'}`,
@@ -558,12 +761,26 @@ export class TiktokService {
       console.log(`Timezone: ${getTimezoneByRegion(region)}`);
       console.log(`Timestamp: ${firstDayTimestamp} → ${day15Timestamp}`);
 
-      return await this.fetchOrdersWithPagination(
-        options,
-        firstDayTimestamp,
-        day15Timestamp,
-        page_size,
-      );
+      // Sử dụng xử lý song song cho khoảng thời gian lớn
+      const timeRange = day15Timestamp - firstDayTimestamp;
+      const sevenDays = 7 * 24 * 60 * 60;
+
+      if (timeRange > sevenDays) {
+        return await this.fetchOrdersParallel(
+          options,
+          firstDayTimestamp,
+          day15Timestamp,
+          page_size,
+        );
+      } else {
+        return await this.fetchOrdersWithPagination(
+          options,
+          firstDayTimestamp,
+          day15Timestamp,
+          page_size,
+          'DESC',
+        );
+      }
     } catch (error) {
       console.error('❌ Lỗi khi lấy đơn hàng:', error);
       return [];
@@ -571,7 +788,7 @@ export class TiktokService {
   }
 
   /**
-   * Lấy tất cả đơn hàng của tháng hiện tại
+   * Lấy tất cả đơn hàng của tháng hiện tại - ĐƯỢC TỐI ƯU
    */
   async fetchCurrentMonthAllOrders(options: CommonParams, page_size = 100) {
     try {
@@ -592,7 +809,7 @@ export class TiktokService {
 
       // Log kiểm tra
       console.log(
-        `Đang lấy đơn hàng của tháng ${
+        `🚀 Tối ưu: Lấy đơn hàng của tháng ${
           currentMonth + 1
         }/${currentYear} (từ ngày 1 đến hiện tại) cho region ${region || 'VN'}`,
       );
@@ -604,6 +821,7 @@ export class TiktokService {
         firstDayTimestamp,
         nowTimestamp,
         page_size,
+        'DESC', // Lấy đơn hàng mới nhất trước
       );
     } catch (error) {
       console.error('❌ Lỗi khi lấy đơn hàng:', error);
@@ -612,7 +830,7 @@ export class TiktokService {
   }
 
   /**
-   * Lấy đơn hàng trong khoảng thời gian tùy chỉnh
+   * Lấy đơn hàng trong khoảng thời gian tùy chỉnh - ĐƯỢC TỐI ƯU
    */
   async getOrdersByDateRange(
     options: CommonParams,
@@ -629,21 +847,100 @@ export class TiktokService {
       const endTimestamp = toUnixTimestampByRegion(endDate, region);
 
       console.log(
-        `Đang lấy đơn hàng từ ${startDate.toLocaleString(
+        `🚀 Tối ưu: Lấy đơn hàng từ ${startDate.toLocaleString(
           'vi-VN',
         )} đến ${endDate.toLocaleString('vi-VN')} cho region ${region || 'VN'}...`,
       );
       console.log(`Timezone: ${getTimezoneByRegion(region)}`);
       console.log(`Timestamp: ${startTimestamp} đến ${endTimestamp}`);
 
-      return await this.fetchOrdersWithPagination(
-        options,
-        startTimestamp,
-        endTimestamp,
-        page_size,
-      );
+      // Tự động chọn phương thức tối ưu dựa trên khoảng thời gian
+      const timeRange = endTimestamp - startTimestamp;
+      const sevenDays = 7 * 24 * 60 * 60;
+
+      if (timeRange > sevenDays) {
+        return await this.fetchOrdersParallel(
+          options,
+          startTimestamp,
+          endTimestamp,
+          page_size,
+        );
+      } else {
+        return await this.fetchOrdersWithPagination(
+          options,
+          startTimestamp,
+          endTimestamp,
+          page_size,
+          'DESC',
+        );
+      }
     } catch (error) {
       console.error('❌ Lỗi khi lấy đơn hàng:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Phương thức mới: Lấy đơn hàng được cập nhật gần đây (sử dụng update_time thay vì create_time)
+   */
+  async fetchRecentlyUpdatedOrders(
+    options: CommonParams,
+    daysAgo = 7,
+    page_size = 100,
+  ) {
+    try {
+      const region = options.region;
+
+      const startDate = getDateDaysAgoByRegion(daysAgo, region);
+      const endDate = getCurrentDateByRegion(region);
+
+      const startTimestamp = toUnixTimestampByRegion(startDate, region);
+      const endTimestamp = toUnixTimestampByRegion(endDate, region);
+
+      console.log(
+        `🔄 Lấy đơn hàng được cập nhật trong ${daysAgo} ngày gần nhất cho region ${region || 'VN'}...`,
+      );
+
+      const requestOptions: CommonParams = {
+        ...options,
+        query_params: {
+          page_size,
+          update_time_ge: startTimestamp,
+          update_time_lt: endTimestamp,
+          sort_field: 'update_time', // Sắp xếp theo thời gian cập nhật
+          sort_order: 'DESC',
+        },
+      };
+
+      let allOrders: Order[] = [];
+      let hasMoreData = true;
+      let nextPageToken = '';
+
+      while (hasMoreData) {
+        if (nextPageToken) {
+          requestOptions.query_params.page_token = nextPageToken;
+        }
+
+        const result = await this.getOrderList(requestOptions);
+
+        if (result.data?.orders && Array.isArray(result.data.orders)) {
+          allOrders = [...allOrders, ...result.data.orders];
+        }
+
+        if (result.data?.next_page_token) {
+          nextPageToken = result.data.next_page_token;
+          console.log(
+            `📦 Đã lấy ${allOrders.length} đơn hàng được cập nhật...`,
+          );
+        } else {
+          hasMoreData = false;
+        }
+      }
+
+      console.log(`✅ Hoàn thành: ${allOrders.length} đơn hàng được cập nhật`);
+      return extractOrderData(allOrders, region);
+    } catch (error) {
+      console.error('❌ Lỗi khi lấy đơn hàng được cập nhật:', error);
       return [];
     }
   }
