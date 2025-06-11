@@ -425,7 +425,11 @@ export class TasksService implements OnModuleInit {
                 message?: string;
               };
 
-              // Kiểm tra lỗi 503 (Service Unavailable)
+              // Kiểm tra lỗi 500 (Internal Server Error) hoặc 503 (Service Unavailable)
+              const isServerError =
+                err.response?.status === 500 ||
+                err.status === 500 ||
+                err.code === 500;
               const isServiceUnavailable =
                 err.response?.status === 503 ||
                 err.status === 503 ||
@@ -443,7 +447,8 @@ export class TasksService implements OnModuleInit {
                 (typeof err.message === 'string' &&
                   err.message.includes('rateLimitExceeded'));
 
-              shouldRetry = isServiceUnavailable || isRateLimit;
+              shouldRetry =
+                isServerError || isServiceUnavailable || isRateLimit;
             }
 
             if (!shouldRetry) {
