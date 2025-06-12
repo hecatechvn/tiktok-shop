@@ -12,6 +12,8 @@ import { GRANT_TYPE } from 'src/enum';
 import { isValidBodyValue } from 'src/lib/validBodyValue';
 import { CommonParams, RequestOption, QueryParams } from 'src/types';
 import { ExtractedOrderItem, Order } from 'src/types/order';
+// import * as fs from 'fs';
+// import * as path from 'path';
 
 import { startOfMonth, endOfDay, setDate, format } from 'date-fns';
 import {
@@ -179,6 +181,36 @@ export class TiktokService {
         data.app_secret,
         'POST',
       );
+
+      // Lưu response vào file txt
+      // try {
+      //   // Tạo thư mục logs nếu chưa tồn tại
+      //   const logsDir = path.join(process.cwd(), 'logs');
+      //   if (!fs.existsSync(logsDir)) {
+      //     fs.mkdirSync(logsDir, { recursive: true });
+      //   }
+
+      //   // Tạo tên file với timestamp
+      //   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      //   const filename = path.join(logsDir, `tiktok_orders_${timestamp}.txt`);
+
+      //   // Lưu thông tin body request và response
+      //   const logData = {
+      //     timestamp: new Date().toISOString(),
+      //     requestParams: {
+      //       uri: requestOption.uri,
+      //       queryParams: requestOption.qs,
+      //       bodyParams: requestOption.body,
+      //     },
+      //     response: response,
+      //   };
+
+      //   fs.writeFileSync(filename, JSON.stringify(logData, null, 2));
+      //   console.log(`✅ Đã lưu response vào file: ${filename}`);
+      // } catch (fileError) {
+      //   console.error('❌ Lỗi khi lưu response vào file:', fileError);
+      // }
+
       return response;
     } catch (error) {
       console.log(error);
@@ -383,31 +415,64 @@ export class TiktokService {
 
     console.log(`🔀 Chia thành ${chunks.length} chunks để xử lý song song`);
 
-    // Xử lý song song các chunk (giới hạn 5 chunk cùng lúc để tránh rate limit)
-    const maxConcurrent = 5;
+    // Xử lý song song các chunk (giảm xuống còn 3 chunk cùng lúc để tránh rate limit)
+    const maxConcurrent = 5; // Giảm từ 5 xuống 3 để tránh quá tải
     const allResults: ExtractedOrderItem[] = [];
+    const delayBetweenBatches = 2000; // Thêm 2 giây delay giữa các batch
 
     for (let i = 0; i < chunks.length; i += maxConcurrent) {
       const currentChunks = chunks.slice(i, i + maxConcurrent);
-
-      const promises = currentChunks.map((chunk) =>
-        this.fetchOrdersWithPagination(
-          options,
-          chunk.start,
-          chunk.end,
-          page_size,
-          'DESC',
-        ),
+      console.log(
+        `🔄 Đang xử lý batch ${Math.floor(i / maxConcurrent) + 1}/${Math.ceil(chunks.length / maxConcurrent)}, ${currentChunks.length} chunks`,
       );
 
       try {
+        // Tạo các promise với các tùy chọn khác nhau cho mỗi chunk
+        const promises = currentChunks.map((chunk, index) => {
+          // Thêm delay khác nhau cho mỗi request trong batch để tránh gửi cùng lúc
+          return new Promise<ExtractedOrderItem[]>((resolve) => {
+            // Thêm delay ngắn giữa các request trong cùng batch
+            setTimeout(() => {
+              this.fetchOrdersWithPagination(
+                options,
+                chunk.start,
+                chunk.end,
+                page_size,
+                'DESC',
+              )
+                .then((result) => {
+                  resolve(result);
+                })
+                .catch((error) => {
+                  console.error(`❌ Lỗi khi xử lý chunk ${i + index}:`, error);
+                  resolve([]); // Trả về mảng rỗng nếu có lỗi để không phá vỡ Promise.all
+                });
+            }, index * 500);
+          });
+        });
+
         const results = await Promise.all(promises);
         results.forEach((result) => allResults.push(...result));
+
+        // Thêm delay giữa các batch để tránh rate limit
+        if (i + maxConcurrent < chunks.length) {
+          console.log(
+            `⏱️ Chờ ${delayBetweenBatches}ms trước khi xử lý batch tiếp theo...`,
+          );
+          await new Promise((resolve) =>
+            setTimeout(resolve, delayBetweenBatches),
+          );
+        }
       } catch (error) {
         console.error('❌ Lỗi khi xử lý song song:', error);
-        // Fallback: xử lý tuần tự
-        for (const chunk of currentChunks) {
+        // Fallback: xử lý tuần tự với delay giữa các request
+        for (const [index, chunk] of currentChunks.entries()) {
           try {
+            // Thêm delay giữa các request tuần tự
+            if (index > 0) {
+              await new Promise((resolve) => setTimeout(resolve, 1000));
+            }
+
             const result = await this.fetchOrdersWithPagination(
               options,
               chunk.start,
@@ -837,47 +902,94 @@ export class TiktokService {
     startDate: Date,
     endDate: Date,
     page_size = 100,
+    maxRetries = 3,
   ) {
-    try {
-      // Lấy region từ options
-      const region = options.region;
+    const region = options.region;
+    let retryCount = 0;
+    let lastError: unknown = null;
 
-      // Tính timestamp cho thời gian bắt đầu và kết thúc theo timezone của region
-      const startTimestamp = toUnixTimestampByRegion(startDate, region);
-      const endTimestamp = toUnixTimestampByRegion(endDate, region);
+    while (retryCount <= maxRetries) {
+      try {
+        // Tính timestamp cho thời gian bắt đầu và kết thúc theo timezone của region
+        const startTimestamp = toUnixTimestampByRegion(startDate, region);
+        const endTimestamp = toUnixTimestampByRegion(endDate, region);
 
-      console.log(
-        `🚀 Tối ưu: Lấy đơn hàng từ ${startDate.toLocaleString(
-          'vi-VN',
-        )} đến ${endDate.toLocaleString('vi-VN')} cho region ${region || 'VN'}...`,
-      );
-      console.log(`Timezone: ${getTimezoneByRegion(region)}`);
-      console.log(`Timestamp: ${startTimestamp} đến ${endTimestamp}`);
-
-      // Tự động chọn phương thức tối ưu dựa trên khoảng thời gian
-      const timeRange = endTimestamp - startTimestamp;
-      const sevenDays = 7 * 24 * 60 * 60;
-
-      if (timeRange > sevenDays) {
-        return await this.fetchOrdersParallel(
-          options,
-          startTimestamp,
-          endTimestamp,
-          page_size,
+        console.log(
+          `🚀 ${retryCount > 0 ? `[Thử lại lần ${retryCount}/${maxRetries}] ` : ''}Lấy đơn hàng từ ${startDate.toLocaleString(
+            'vi-VN',
+          )} đến ${endDate.toLocaleString('vi-VN')} cho region ${region || 'VN'}...`,
         );
-      } else {
-        return await this.fetchOrdersWithPagination(
-          options,
-          startTimestamp,
-          endTimestamp,
-          page_size,
-          'DESC',
+        console.log(`Timezone: ${getTimezoneByRegion(region)}`);
+        console.log(`Timestamp: ${startTimestamp} đến ${endTimestamp}`);
+
+        // Tự động chọn phương thức tối ưu dựa trên khoảng thời gian
+        const timeRange = endTimestamp - startTimestamp;
+        const sevenDays = 7 * 24 * 60 * 60;
+
+        let orders: ExtractedOrderItem[] = [];
+        if (timeRange > sevenDays) {
+          console.log(
+            `📊 Khoảng thời gian > 7 ngày (${Math.floor(timeRange / 86400)} ngày), sử dụng xử lý song song`,
+          );
+          orders = await this.fetchOrdersParallel(
+            options,
+            startTimestamp,
+            endTimestamp,
+            page_size,
+          );
+        } else {
+          console.log(
+            `📊 Khoảng thời gian <= 7 ngày (${Math.floor(timeRange / 86400)} ngày), sử dụng xử lý tuần tự`,
+          );
+          orders = await this.fetchOrdersWithPagination(
+            options,
+            startTimestamp,
+            endTimestamp,
+            page_size,
+            'DESC',
+          );
+        }
+
+        console.log(
+          `✅ Đã lấy thành công ${orders.length} đơn hàng trong khoảng thời gian`,
         );
+        return orders;
+      } catch (error: unknown) {
+        lastError = error;
+        retryCount++;
+
+        // Kiểm tra nếu là lỗi Gateway Timeout (504)
+        const errorStr = String(error);
+        const isTimeoutError =
+          errorStr.includes('504') || errorStr.includes('Gateway Time-out');
+
+        if (retryCount <= maxRetries) {
+          const delayMs = isTimeoutError
+            ? 5000 * retryCount
+            : 2000 * retryCount;
+          console.error(
+            `❌ Lỗi khi lấy đơn hàng (${isTimeoutError ? 'Gateway Timeout' : 'Lỗi khác'}): ${errorStr}`,
+          );
+          console.log(
+            `⏱️ Đang thử lại lần ${retryCount}/${maxRetries} sau ${delayMs}ms...`,
+          );
+
+          // Chờ trước khi thử lại
+          await new Promise((resolve) => setTimeout(resolve, delayMs));
+        } else {
+          console.error(
+            `❌ Đã thử lại ${maxRetries} lần nhưng vẫn thất bại:`,
+            errorStr,
+          );
+        }
       }
-    } catch (error) {
-      console.error('❌ Lỗi khi lấy đơn hàng:', error);
-      return [];
     }
+
+    console.error(
+      `❌ Không thể lấy đơn hàng sau ${maxRetries} lần thử:`,
+      String(lastError),
+    );
+    return [];
   }
 
   /**

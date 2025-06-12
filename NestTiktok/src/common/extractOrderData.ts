@@ -7,13 +7,6 @@ import { formatDateTimeByRegion } from 'src/utils/date';
  * @param orderId - Order ID gốc
  * @returns Order ID đã format hoặc gốc
  */
-const formatOrderId = (orderId: string): string => {
-  if (orderId.endsWith('000')) {
-    const numericId = parseFloat(orderId);
-    return numericId.toExponential(5); // Format thành dạng 5.79111E+17
-  }
-  return orderId;
-};
 
 /**
  * Trích xuất các trường dữ liệu cụ thể từ dữ liệu đơn hàng theo yêu cầu
@@ -107,7 +100,7 @@ export const extractOrderData = (
 
         // Trích xuất thông tin cho từng mục hàng
         const extractedItem: ExtractedOrderItem = {
-          order_id: formatOrderId(order.id), // ID đơn hàng với format
+          order_id: order.id, // ID đơn hàng với format
 
           order_status: orderStatus as string, // Trạng thái đơn hàng theo logic mới
           order_substatus: order.status, // Trạng thái phụ của đơn hàng
@@ -124,22 +117,51 @@ export const extractOrderData = (
 
           sku_unit_original_price: item.original_price, // Giá gốc của SKU
 
-          sku_subtotal_before_discount: item.original_price, // Tổng phụ trước giảm giá
+          sku_subtotal_before_discount: parseFloat(
+            (parseFloat(item.original_price) * quantity).toFixed(2),
+          ).toString(), // Tổng phụ trước giảm giá
 
-          sku_platform_discount: item.platform_discount || '0', // Giảm giá từ nền tảng
-          sku_seller_discount: item.seller_discount || '0', // Giảm giá từ người bán
-          sku_subtotal_after_discount: (
-            parseFloat(item.original_price) -
-            parseFloat(item.seller_discount || '0') -
-            parseFloat(item.platform_discount || '0')
+          sku_platform_discount: parseFloat(
+            (parseFloat(item.platform_discount || '0') * quantity).toFixed(2),
+          ).toString(), // Giảm giá từ nền tảng
+
+          sku_seller_discount: parseFloat(
+            (parseFloat(item.seller_discount || '0') * quantity).toFixed(2),
+          ).toString(), // Giảm giá từ người bán
+
+          sku_subtotal_after_discount: parseFloat(
+            (
+              parseFloat(
+                (parseFloat(item.original_price) * quantity).toFixed(2),
+              ) -
+              parseFloat(
+                (parseFloat(item.seller_discount || '0') * quantity).toFixed(2),
+              ) -
+              parseFloat(
+                (parseFloat(item.platform_discount || '0') * quantity).toFixed(
+                  2,
+                ),
+              )
+            ).toFixed(2),
           ).toString(), // Tổng phụ sau giảm giá
+
           shipping_fee_after_discount: order.payment?.shipping_fee || '0', // Phí vận chuyển sau giảm giá
           original_shipping_fee: order.payment?.original_shipping_fee || '0', // Phí vận chuyển gốc
           shipping_fee_seller_discount:
             order.payment?.shipping_fee_seller_discount || '0',
           shipping_fee_platform_discount:
             order.payment?.shipping_fee_platform_discount || '0', // Giảm giá phí vận chuyển từ nền tảng
-          payment_platform_discount: order.payment?.platform_discount || '0',
+
+          payment_platform_discount: (() => {
+            const discount = parseFloat(
+              (
+                parseFloat(order.payment?.sub_total || '0') -
+                parseFloat(order.payment?.total_amount || '0')
+              ).toFixed(2),
+            );
+            return discount > 0 ? discount.toString() : '0';
+          })(),
+
           taxes: order.payment?.tax || '0', // Thuế
           order_amount: order.payment?.total_amount || '0', // Tổng số tiền đơn hàng
 
@@ -182,7 +204,7 @@ export const extractOrderData = (
       }
 
       const extractedItem: ExtractedOrderItem = {
-        order_id: formatOrderId(order.id), // ID đơn hàng với format
+        order_id: order.id, // ID đơn hàng với format
         order_status: orderStatus, // Trạng thái đơn hàng theo logic mới
         order_substatus: order.status,
         cancellation_initiator: order.cancellation_initiator || '',

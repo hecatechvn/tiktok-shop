@@ -106,10 +106,10 @@ export class GoogleSheetsService {
           throw error; // Nếu không phải lỗi cần retry, ném lỗi ngay
         }
 
-        // Exponential backoff theo hướng dẫn của Google
-        const baseDelay = Math.pow(2, retries) * 1000;
-        const randomJitter = Math.random() * 1000;
-        const maxBackoff = isRateLimit ? 64000 : 60000;
+        // Exponential backoff theo hướng dẫn của Google với thời gian dài hơn
+        const baseDelay = Math.pow(2, retries) * 2000; // Tăng từ 1000 lên 2000ms
+        const randomJitter = Math.random() * 2000; // Tăng từ 1000 lên 2000ms
+        const maxBackoff = isRateLimit ? 120000 : 90000; // Tăng từ 64000/60000 lên 120000/90000ms
         const waitTime = Math.min(baseDelay + randomJitter, maxBackoff);
 
         if (isRateLimit) {
