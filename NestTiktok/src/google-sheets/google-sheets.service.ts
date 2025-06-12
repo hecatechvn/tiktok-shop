@@ -413,12 +413,14 @@ export class GoogleSheetsService {
    * @param spreadsheetId - ID của bảng tính
    * @param sheetName - Tên của sheet
    * @param totalRows - Tổng số hàng
+   * @param options - Tùy chọn định dạng (numericColumns: danh sách các cột cần định dạng số)
    * @returns Promise hoàn thành khi việc định dạng hoàn tất
    */
   async formatCompleteTable(
     spreadsheetId: string,
     sheetName: string,
     totalRows: number,
+    options?: { numericColumns?: string[] },
   ): Promise<any> {
     const sheets = await this.getSheetsClient();
     const sheetId = await this.getSheetId(spreadsheetId, sheetName);
@@ -532,6 +534,50 @@ export class GoogleSheetsService {
         },
       });
     });
+
+    // Bước 3: Định dạng các cột số (nếu có)
+    if (options?.numericColumns && options.numericColumns.length > 0) {
+      const requests = options.numericColumns.map((colLetter) => {
+        // Chuyển đổi chữ cái thành số cột (A=0, B=1, ...)
+        const colIndex = colLetter.charCodeAt(0) - 65; // 'A'.charCodeAt(0) = 65
+
+        return {
+          repeatCell: {
+            range: {
+              sheetId,
+              startRowIndex: 1, // Bắt đầu từ dòng sau header
+              endRowIndex: totalRows,
+              startColumnIndex: colIndex,
+              endColumnIndex: colIndex + 1,
+            },
+            cell: {
+              userEnteredFormat: {
+                numberFormat: {
+                  type: 'NUMBER',
+                  pattern: '#,##0.00', // Định dạng số kiểu US với tối đa 2 số thập phân (không hiển thị số 0 thừa)
+                },
+              },
+            },
+            fields: 'userEnteredFormat.numberFormat',
+          },
+        };
+      });
+
+      await this.executeWithRetry(async () => {
+        return sheets.spreadsheets.batchUpdate({
+          spreadsheetId,
+          requestBody: {
+            requests,
+          },
+        });
+      });
+
+      this.logger.log(
+        `Đã áp dụng định dạng số kiểu US cho các cột: ${options.numericColumns.join(
+          ', ',
+        )}`,
+      );
+    }
 
     // Tự động điều chỉnh chiều rộng các cột
     await this.executeWithRetry(async () => {

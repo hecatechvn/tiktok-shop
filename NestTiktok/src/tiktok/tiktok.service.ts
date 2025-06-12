@@ -358,7 +358,7 @@ export class TiktokService {
   ): Promise<ExtractedOrderItem[]> {
     // Chia khoảng thời gian thành các chunk nhỏ hơn để xử lý song song
     const timeRange = endTimestamp - startTimestamp;
-    const maxChunkSize = 7 * 24 * 60 * 60; // 7 ngày
+    const maxChunkSize = 1 * 24 * 60 * 60; // 1 ngày
 
     if (timeRange <= maxChunkSize) {
       // Nếu khoảng thời gian nhỏ, sử dụng phương thức thông thường
@@ -383,8 +383,8 @@ export class TiktokService {
 
     console.log(`🔀 Chia thành ${chunks.length} chunks để xử lý song song`);
 
-    // Xử lý song song các chunk (giới hạn 3 chunk cùng lúc để tránh rate limit)
-    const maxConcurrent = 3;
+    // Xử lý song song các chunk (giới hạn 5 chunk cùng lúc để tránh rate limit)
+    const maxConcurrent = 5;
     const allResults: ExtractedOrderItem[] = [];
 
     for (let i = 0; i < chunks.length; i += maxConcurrent) {

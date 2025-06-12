@@ -310,6 +310,38 @@ export class TasksService implements OnModuleInit {
         return;
       }
 
+      // Định nghĩa các cột cần định dạng số (US format)
+      const numericColumns = [
+        'H',
+        'I',
+        'J',
+        'K',
+        'L',
+        'M',
+        'N',
+        'O',
+        'P',
+        'Q',
+        'R',
+        'S',
+        'T',
+        'U',
+        'V',
+      ];
+
+      // Helper function to ensure numeric values are properly formatted
+      const formatNumericValue = (
+        value: string | number | undefined,
+      ): string | number => {
+        if (value === undefined || value === null || value === '') return '';
+
+        // Try to convert to number if it's a string representing a number
+        const numValue = typeof value === 'string' ? parseFloat(value) : value;
+
+        // Return the numeric value if it's a valid number, otherwise return the original value
+        return !isNaN(numValue) ? numValue : value;
+      };
+
       const header = [
         'Order ID',
         'Order Status',
@@ -368,21 +400,21 @@ export class TasksService implements OnModuleInit {
         item.sku_id || '',
         item.product_name || '',
         item.variation || '',
-        item.quantity || '',
-        item.sku_quantity_return || '',
-        item.sku_unit_original_price || '',
-        item.sku_subtotal_before_discount || '',
-        item.sku_platform_discount || '',
-        item.sku_seller_discount || '',
-        item.sku_subtotal_after_discount || '',
-        item.shipping_fee_after_discount || '',
-        item.original_shipping_fee || '',
-        item.shipping_fee_seller_discount || '',
-        item.shipping_fee_platform_discount || '',
-        item.payment_platform_discount || '',
-        item.taxes || '',
-        item.order_amount || '',
-        item.order_refund_amount || '',
+        formatNumericValue(item.quantity),
+        formatNumericValue(item.sku_quantity_return),
+        formatNumericValue(item.sku_unit_original_price),
+        formatNumericValue(item.sku_subtotal_before_discount),
+        formatNumericValue(item.sku_platform_discount),
+        formatNumericValue(item.sku_seller_discount),
+        formatNumericValue(item.sku_subtotal_after_discount),
+        formatNumericValue(item.shipping_fee_after_discount),
+        formatNumericValue(item.original_shipping_fee),
+        formatNumericValue(item.shipping_fee_seller_discount),
+        formatNumericValue(item.shipping_fee_platform_discount),
+        formatNumericValue(item.payment_platform_discount),
+        formatNumericValue(item.taxes),
+        formatNumericValue(item.order_amount),
+        formatNumericValue(item.order_refund_amount),
         item.created_time || '',
         item.cancel_reason || '',
       ]) as SheetValues;
@@ -556,6 +588,7 @@ export class TasksService implements OnModuleInit {
             spreadsheetId,
             sheetName,
             totalRows,
+            { numericColumns },
           ),
         );
         await checkAndWaitForQuota();
@@ -612,6 +645,7 @@ export class TasksService implements OnModuleInit {
               spreadsheetId,
               sheetName,
               totalRows,
+              { numericColumns },
             ),
           );
           await checkAndWaitForQuota();
@@ -659,6 +693,7 @@ export class TasksService implements OnModuleInit {
               spreadsheetId,
               sheetName,
               totalRows,
+              { numericColumns },
             ),
           );
           await checkAndWaitForQuota();
