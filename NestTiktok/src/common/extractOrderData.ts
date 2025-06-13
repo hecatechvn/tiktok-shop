@@ -88,14 +88,11 @@ export const extractOrderData = (
 
         // Xác định sku_quantity_return và order_refund_amount
         let skuQuantityReturn = 0;
-        let orderRefundAmount = '0';
-
         if (
           cancellationType === 'Return/Refund' ||
           cancellationType === 'Cancel'
         ) {
           skuQuantityReturn = quantity;
-          orderRefundAmount = order.payment?.total_amount || '0';
         }
 
         // Trích xuất thông tin cho từng mục hàng
@@ -103,7 +100,7 @@ export const extractOrderData = (
           order_id: order.id, // ID đơn hàng với format
 
           order_status: orderStatus as string, // Trạng thái đơn hàng theo logic mới
-          order_substatus: order.status, // Trạng thái phụ của đơn hàng
+          order_substatus: item.display_status || order.status, // Trạng thái phụ của đơn hàng, ưu tiên lấy từ line_items.display_status
 
           cancellation_return_type: cancellationType, // Loại hủy/hoàn trả theo logic mới
 
@@ -121,29 +118,27 @@ export const extractOrderData = (
             (parseFloat(item.original_price) * quantity).toFixed(2),
           ).toString(), // Tổng phụ trước giảm giá
 
-          sku_platform_discount: parseFloat(
-            (parseFloat(item.platform_discount || '0') * quantity).toFixed(2),
-          ).toString(), // Giảm giá từ nền tảng
+          sku_platform_discount: (() => {
+            const subtotalBeforeDiscount = parseFloat(
+              (parseFloat(item.original_price) * quantity).toFixed(2),
+            );
+            const subtotalAfterDiscount = parseFloat(
+              order.payment?.sub_total || '0',
+            );
+            const sellerDiscount = parseFloat(
+              (parseFloat(item.seller_discount || '0') * quantity).toFixed(2),
+            );
+
+            const platformDiscount =
+              subtotalBeforeDiscount - subtotalAfterDiscount - sellerDiscount;
+            return platformDiscount > 0 ? platformDiscount.toFixed(2) : '0';
+          })(),
 
           sku_seller_discount: parseFloat(
             (parseFloat(item.seller_discount || '0') * quantity).toFixed(2),
           ).toString(), // Giảm giá từ người bán
 
-          sku_subtotal_after_discount: parseFloat(
-            (
-              parseFloat(
-                (parseFloat(item.original_price) * quantity).toFixed(2),
-              ) -
-              parseFloat(
-                (parseFloat(item.seller_discount || '0') * quantity).toFixed(2),
-              ) -
-              parseFloat(
-                (parseFloat(item.platform_discount || '0') * quantity).toFixed(
-                  2,
-                ),
-              )
-            ).toFixed(2),
-          ).toString(), // Tổng phụ sau giảm giá
+          sku_subtotal_after_discount: item.sale_price || '0',
 
           shipping_fee_after_discount: order.payment?.shipping_fee || '0', // Phí vận chuyển sau giảm giá
           original_shipping_fee: order.payment?.original_shipping_fee || '0', // Phí vận chuyển gốc
@@ -153,19 +148,53 @@ export const extractOrderData = (
             order.payment?.shipping_fee_platform_discount || '0', // Giảm giá phí vận chuyển từ nền tảng
 
           payment_platform_discount: (() => {
-            const discount = parseFloat(
-              (
-                parseFloat(order.payment?.sub_total || '0') -
-                parseFloat(order.payment?.total_amount || '0')
-              ).toFixed(2),
-            );
-            return discount > 0 ? discount.toString() : '0';
+            const subTotal = parseFloat(order.payment?.sub_total || '0');
+            const totalAmount = parseFloat(order.payment?.total_amount || '0');
+            const simpleDifference = subTotal - totalAmount;
+
+            if (simpleDifference >= 0) {
+              return simpleDifference.toFixed(2);
+            } else {
+              const paymentPlatformDiscount = parseFloat(
+                order.payment?.platform_discount || '0',
+              );
+              const skuPlatformDiscount = parseFloat(
+                (() => {
+                  const subtotalBeforeDiscount = parseFloat(
+                    (parseFloat(item.original_price) * quantity).toFixed(2),
+                  );
+                  const subtotalAfterDiscount = parseFloat(
+                    order.payment?.sub_total || '0',
+                  );
+                  const sellerDiscount = parseFloat(
+                    (
+                      parseFloat(item.seller_discount || '0') * quantity
+                    ).toFixed(2),
+                  );
+
+                  const platformDiscount =
+                    subtotalBeforeDiscount -
+                    subtotalAfterDiscount -
+                    sellerDiscount;
+                  return platformDiscount > 0
+                    ? platformDiscount.toFixed(2)
+                    : '0';
+                })(),
+              );
+
+              const result = paymentPlatformDiscount - skuPlatformDiscount;
+              return result > 0 ? result.toFixed(2) : '0';
+            }
           })(),
 
           taxes: order.payment?.tax || '0', // Thuế
           order_amount: order.payment?.total_amount || '0', // Tổng số tiền đơn hàng
 
-          order_refund_amount: orderRefundAmount, // Số tiền hoàn lại theo logic mới
+          order_refund_amount:
+            cancellationType === 'Return/Refund' ||
+            cancellationType === 'Cancel'
+              ? item.sale_price || '0'
+              : '0', // Số tiền hoàn lại theo logic mới
 
           created_time: formatDateTimeByRegion(order.create_time, region),
           cancel_reason: order.cancel_reason || item.cancel_reason || '', // Lý do hủy
@@ -197,12 +226,6 @@ export const extractOrderData = (
         cancellationType = 'Return/Refund';
       }
 
-      // Xác định order_refund_amount
-      let orderRefundAmount = '0';
-      if (cancellationType === 'Return/Refund') {
-        orderRefundAmount = order.payment?.total_amount || '0';
-      }
-
       const extractedItem: ExtractedOrderItem = {
         order_id: order.id, // ID đơn hàng với format
         order_status: orderStatus, // Trạng thái đơn hàng theo logic mới
@@ -225,10 +248,30 @@ export const extractOrderData = (
           order.payment?.shipping_fee_seller_discount || '0',
         shipping_fee_platform_discount:
           order.payment?.shipping_fee_platform_discount || '0',
-        payment_platform_discount: order.payment?.platform_discount || '0',
+        payment_platform_discount: (() => {
+          const paymentPlatformDiscount = parseFloat(
+            order.payment?.platform_discount || '0',
+          );
+          // For the case where there are no line items, we can't calculate sku_platform_discount the same way
+          // So we'll use a simpler approach based on the payment information
+          const subTotal = parseFloat(order.payment?.sub_total || '0');
+          const totalAmount = parseFloat(order.payment?.total_amount || '0');
+          const simpleDifference = subTotal - totalAmount;
+
+          if (simpleDifference > 0) {
+            return simpleDifference.toFixed(2);
+          } else {
+            return paymentPlatformDiscount > 0
+              ? paymentPlatformDiscount.toFixed(2)
+              : '0';
+          }
+        })(),
         taxes: order.payment?.tax || '0',
         order_amount: order.payment?.total_amount || '0',
-        order_refund_amount: orderRefundAmount, // Số tiền hoàn lại theo logic mới
+        order_refund_amount:
+          cancellationType === 'Return/Refund' || cancellationType === 'Cancel'
+            ? order.payment?.sub_total || '0'
+            : '0', // Số tiền hoàn lại theo logic mới
         created_time: formatDateTimeByRegion(order.create_time, region),
         cancel_reason: order.cancel_reason || '',
       };

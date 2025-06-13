@@ -9,8 +9,8 @@ services:
       MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD}
       MONGO_INITDB_DATABASE: ${MONGO_DATABASE}
     volumes:
-      - mongodb_data:/data/db
-      - mongodb_config:/data/configdb
+      - ./mongodb_data:/data/db
+      - ./mongodb_config:/data/configdb
     networks:
       - traefik-net
     # Chỉ expose port trong development, production sẽ không cần
@@ -61,10 +61,6 @@ services:
       - traefik-net
     depends_on:
       - mongodb
-
-volumes:
-  mongodb_data:
-  mongodb_config:
 
 networks:
   traefik-net:
