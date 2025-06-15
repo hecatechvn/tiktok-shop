@@ -23,8 +23,9 @@ echo "API URL: ${NEXT_PUBLIC_API_URL}"
 echo "======================================"
 
 echo "📦 Building NestTiktok backend image (Port: ${BACKEND_PORT})..."
+echo "Setting Node.js heap memory to 4GB..."
 cd NestTiktok
-docker build -t ${USERNAME}/nest-tiktok:latest .
+docker build --build-arg NODE_OPTIONS="--max-old-space-size=4096" -t ${USERNAME}/nest-tiktok:latest .
 cd ..
 
 echo "📦 Building tiktok-web frontend image (Port: ${FRONTEND_PORT})..."
@@ -50,6 +51,7 @@ echo "📋 Built with configuration:"
 echo "- Frontend: ${NEXTAUTH_URL}"
 echo "- Backend API: ${NEXT_PUBLIC_API_URL}"
 echo "- Environment: ${NODE_ENV}"
+echo "- Backend Node.js heap: 4GB"
 echo ""
 echo "🚀 Deploy with: "
 echo "   docker compose -f docker-compose-fe-be.yml down"

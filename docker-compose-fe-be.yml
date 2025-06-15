@@ -44,6 +44,7 @@ services:
     environment:
       - NODE_ENV=${NODE_ENV}
       - PORT=${BACKEND_PORT}
+      - NODE_OPTIONS=--max-old-space-size=4096
       - MONGO_URI=mongodb://${MONGO_USERNAME}:${MONGO_PASSWORD}@mongodb:27017/${MONGO_DATABASE}?authSource=admin
       - JWT_SECRET=${JWT_SECRET}
       - JWT_ACCESS_EXPIRATION=${JWT_ACCESS_EXPIRATION}

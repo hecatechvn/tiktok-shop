@@ -24,6 +24,10 @@ FROM node:20-slim
 
 WORKDIR /app
 
+# Accept build arg for NODE_OPTIONS
+ARG NODE_OPTIONS
+ENV NODE_OPTIONS="${NODE_OPTIONS} --max-old-space-size=4096"
+
 # Chỉ copy file package.json và package-lock.json để cài dependencies production
 COPY package*.json ./
 
