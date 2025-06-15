@@ -416,7 +416,7 @@ export class TiktokService {
     console.log(`🔀 Chia thành ${chunks.length} chunks để xử lý song song`);
 
     // Xử lý song song các chunk (giảm xuống còn 3 chunk cùng lúc để tránh rate limit)
-    const maxConcurrent = 5; // Giảm từ 5 xuống 3 để tránh quá tải
+    const maxConcurrent = 10; // Giảm từ 5 xuống 3 để tránh quá tải
     const allResults: ExtractedOrderItem[] = [];
     const delayBetweenBatches = 2000; // Thêm 2 giây delay giữa các batch
 

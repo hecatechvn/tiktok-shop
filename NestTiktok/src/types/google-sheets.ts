@@ -7,12 +7,20 @@ export interface WriteToSheetParams {
   spreadsheetId: string;
   range: string;
   values: SheetValues;
+  taskName?: string;
 }
 
-export type AppendToSheetParams = WriteToSheetParams;
+export interface AppendToSheetParams {
+  spreadsheetId: string;
+  range: string;
+  values: SheetValues;
+  taskName?: string;
+}
+
 export interface ReadSheetParams {
   spreadsheetId: string;
   range: string;
+  taskName?: string;
 }
 
 export interface AddSheetParams {
