@@ -5,8 +5,12 @@ import { useRouter } from "next/navigation";
 import { parseTikTokCallback } from "../../utils/tiktokAuth";
 import { tikTokAccountService } from "../../services/tikTokAccountService";
 import { Typography } from "antd";
+import crypto from 'crypto';
 
 const { Text } = Typography;
+
+// Thời gian tối đa cho phép xử lý callback (5 phút)
+const MAX_CALLBACK_TIME = 5 * 60 * 1000;
 
 export default function CallbackPage() {
   const router = useRouter();
@@ -36,19 +40,52 @@ export default function CallbackPage() {
           return;
         }
         
-        // Xóa state đã sử dụng
+        // Kiểm tra thời gian bắt đầu quá trình xác thực
+        const authStartTime = localStorage.getItem('tiktok_auth_timestamp');
+        if (!authStartTime || (Date.now() - parseInt(authStartTime)) > MAX_CALLBACK_TIME) {
+          setStatus('error');
+          setErrorMessage('Phiên xác thực đã hết hạn. Vui lòng thử lại.');
+          localStorage.removeItem('tiktok_auth_state');
+          localStorage.removeItem('tiktok_auth_timestamp');
+          localStorage.removeItem('pendingTikTokAccount');
+          return;
+        }
+        
+        // Xóa state và timestamp đã sử dụng
         localStorage.removeItem('tiktok_auth_state');
+        localStorage.removeItem('tiktok_auth_timestamp');
 
         // Kiểm tra xem có dữ liệu tài khoản đang chờ xử lý trong localStorage không
-        const pendingAccountData = localStorage.getItem('pendingTikTokAccount');
+        const encryptedData = localStorage.getItem('pendingTikTokAccount');
         
-        if (!pendingAccountData) {
+        if (!encryptedData) {
           setStatus('error');
           setErrorMessage('Không tìm thấy thông tin tài khoản đang chờ xử lý.');
           return;
         }
 
-        const accountData = JSON.parse(pendingAccountData);
+        // Giải mã dữ liệu tài khoản
+        let accountData;
+        try {
+          accountData = JSON.parse(decodeURIComponent(encryptedData));
+          
+          // Xác minh hash nếu có
+          if (accountData.dataHash) {
+            const { dataHash, ...dataToVerify } = accountData;
+            const verifyHash = crypto.createHash('sha256')
+              .update(JSON.stringify(dataToVerify) + state)
+              .digest('hex');
+            
+            if (dataHash !== verifyHash) {
+              throw new Error('Data integrity check failed');
+            }
+          }
+        } catch {
+          setStatus('error');
+          setErrorMessage('Dữ liệu tài khoản không hợp lệ hoặc đã bị sửa đổi.');
+          localStorage.removeItem('pendingTikTokAccount');
+          return;
+        }
         
         // Xác minh rằng app key khớp
         if (accountData.appKey !== appKey) {
@@ -62,6 +99,11 @@ export default function CallbackPage() {
           ...accountData,
           authCode: code
         };
+        
+        // Loại bỏ trường dataHash nếu có
+        if (createData.dataHash) {
+          delete createData.dataHash;
+        }
 
         // Nếu có ID, cập nhật tài khoản hiện có, nếu không thì tạo mới
         if (accountData.id) {
@@ -84,10 +126,23 @@ export default function CallbackPage() {
         console.error('Lỗi xử lý callback:', error);
         setStatus('error');
         setErrorMessage('Có lỗi xảy ra khi xử lý ủy quyền. Vui lòng thử lại.');
+        
+        // Xóa dữ liệu nhạy cảm trong trường hợp lỗi
+        localStorage.removeItem('tiktok_auth_state');
+        localStorage.removeItem('tiktok_auth_timestamp');
+        localStorage.removeItem('pendingTikTokAccount');
       }
     };
 
     handleCallback();
+    
+    // Cleanup function
+    return () => {
+      // Đảm bảo dữ liệu nhạy cảm được xóa khi component unmount
+      localStorage.removeItem('tiktok_auth_state');
+      localStorage.removeItem('tiktok_auth_timestamp');
+      localStorage.removeItem('pendingTikTokAccount');
+    };
   }, [router]);
 
   return (
