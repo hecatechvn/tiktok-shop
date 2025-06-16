@@ -238,9 +238,7 @@ export class GoogleSheetsService {
   /**
    * Lấy thông tin spreadsheet từ cache hoặc API
    */
-  private async getSpreadsheetInfo(
-    spreadsheetId: string,
-  ): Promise<SpreadsheetCache> {
+  async getSpreadsheetInfo(spreadsheetId: string): Promise<SpreadsheetCache> {
     const now = Date.now();
     const cached = this.spreadsheetCache.get(spreadsheetId);
 
@@ -665,7 +663,7 @@ export class GoogleSheetsService {
                   properties: {
                     title: sheetName,
                     gridProperties: {
-                      rowCount: 1000000,
+                      rowCount: 50000,
                       columnCount: header.length + 2, // Thêm vài cột dự phòng
                       frozenRowCount: 1, // Cố định hàng header luôn
                       frozenColumnCount: 1, // Cố định cột đầu
@@ -836,6 +834,45 @@ export class GoogleSheetsService {
   }
 
   /**
+   * Xóa một sheet khỏi spreadsheet dựa trên sheetId
+   * @param spreadsheetId ID của spreadsheet
+   * @param sheetId ID của sheet cần xóa
+   * @returns Kết quả của việc xóa sheet
+   */
+  async deleteSheet(spreadsheetId: string, sheetId: number): Promise<any> {
+    try {
+      const result = await this.executeWithRetry(async () => {
+        const sheets = await this.getSheetsClient();
+
+        const request: sheets_v4.Params$Resource$Spreadsheets$Batchupdate = {
+          spreadsheetId,
+          requestBody: {
+            requests: [
+              {
+                deleteSheet: {
+                  sheetId,
+                },
+              },
+            ],
+          },
+        };
+
+        const res = await sheets.spreadsheets.batchUpdate(request);
+        this.logger.log(`Deleted sheet with ID: ${sheetId}`);
+        return res.data;
+      });
+
+      // Xóa cache sau khi xóa sheet
+      this.clearCache(spreadsheetId);
+
+      return result;
+    } catch (error) {
+      this.logger.error(`Error deleting sheet ${sheetId}:`, error);
+      throw error;
+    }
+  }
+
+  /**
    * Phương thức tối ưu để ghi dữ liệu vào nhiều sheet cùng lúc
    * Giảm thiểu overhead khi xử lý nhiều sheet - CHỈ SỬ DỤNG 1 API CALL THỐNG NHẤT
    */
@@ -959,7 +996,7 @@ export class GoogleSheetsService {
               properties: {
                 sheetId: sheetId,
                 gridProperties: {
-                  rowCount: Math.max(10000, maxDataRows + 100), // Đủ dòng nhưng không quá lớn
+                  rowCount: Math.max(5000, maxDataRows + 100), // Đủ dòng nhưng không quá lớn
                 },
               },
               fields: 'gridProperties.rowCount',
